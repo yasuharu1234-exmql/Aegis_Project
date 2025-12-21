@@ -1,162 +1,244 @@
 ﻿//+------------------------------------------------------------------+
-//|                                                     CLA_Data.mqh |
-//|                                  Copyright 2025, Aegis Hybrid EA |
-//|                                      Created by Gemini & Claude  |
+//|                                                    CLA_Data.mqh |
+//|                                  Copyright 2025, Aegis Project   |
 //+------------------------------------------------------------------+
+#property copyright   "Copyright 2025, Aegis Project"
+#property version     "1.20"
 #property strict
-#include "CLA_Common.mqh" // 共通定義を読み込み
-#include "CFileLogger.mqh" // ファイルロガーを読み込み
 
-//========================================================================
-// ■ データ管理クラス: CLA_Data
-//------------------------------------------------------------------------
-// [概要]
-//   システム全体の状態、シグナル、ログを一元管理する。
-//   シングルトン(Global変数 g_data)として運用し、各モジュールには
-//   参照渡し(CLA_Data &data)で伝播させる。
-//
-// [責務]
-//   1. 操作ログの記録 (リングバッファ + ファイル出力)
-//   2. 各層のステータス管理
-//   3. シグナルデータの保持と提供
-//
-// [ログ出力先]
-//   - メモリ: リングバッファ（直近100件）
-//   - ファイル: UTF-8（BOM付き）CSV（Files/Aegis/Logs/）
-//   - コンソール: Experts/Journal タブ
-//========================================================================
-class CLA_Data {
+#include "CLA_Common.mqh"
+#include "CFileLogger.mqh"
+
+//+------------------------------------------------------------------+
+//| グローバルデータ管理クラス                                         |
+//| 役割：全レイヤー間でのデータ共有、ログ管理                          |
+//+------------------------------------------------------------------+
+class CLA_Data
+{
 private:
-   // --- メンバ変数 ---
-   AccessLog         m_logs[100];      // ログ用リングバッファ
-   int               m_log_index;      // 現在の書き込み位置
-   ENUM_LAYER_STATUS m_layer_status[]; // 各層の状態 (配列で管理)
-   CFileLogger       m_file_logger;    // ファイルロガー
-   bool              m_enable_console_log; // コンソールログ出力フラグ
+   // ========== ログ管理 ==========
+   CFileLogger m_logger;                    // ファイルロガー
+   bool        m_console_log_enabled;       // コンソールログ有効フラグ
+   
+   // ========== メモリバッファ（重要ログフィルタ用） ==========
+   string      m_log_buffer[];              // 全ログをメモリに保持
+   int         m_log_buffer_size;           // バッファサイズ
+   int         m_log_buffer_count;          // 現在のログ数
+   
+   // ========== レイヤー状態管理 ==========
+   ENUM_LAYER_STATUS m_layer_status[6];     // 各レイヤーの状態
+   
+   // ========== 市場データ ==========
+   double      m_current_bid;               // 現在のBid価格
+   double      m_current_ask;               // 現在のAsk価格
+   double      m_current_spread;            // 現在のスプレッド
+   datetime    m_current_time;              // 現在時刻
+   
+   // ========== 観測データ ==========
+   double      m_rsi_value;                 // RSI値
+   
+   // ========== Gatekeeper状態（Phase 2追加） ==========
+   ENUM_GK_RESULT m_last_gk_result;         // 最後のGatekeeper判定結果
    
 public:
-   // --- コンストラクタ ---
-   CLA_Data() {
-      m_log_index = 0;
-      m_enable_console_log = true; // デフォルトは有効
-      ArrayResize(m_layer_status, 10); // とりあえず10層分確保
-      ArrayInitialize(m_layer_status, STATUS_INIT);
-   }
-
-   // --- デストラクタ ---
-   ~CLA_Data() {
-      // 終了時に必要ならログをダンプする処理をここに書く
-   }
-
-   //---------------------------------------------------------------------
-   // ■ コンソールログ出力設定
-   //---------------------------------------------------------------------
-   void SetConsoleLogEnabled(bool enabled) {
-      m_enable_console_log = enabled;
-      PrintFormat("[CLA_Data] コンソールログ出力: %s", enabled ? "有効" : "無効");
-   }
-   
-   bool IsConsoleLogEnabled() const {
-      return m_enable_console_log;
-   }
-
-   //---------------------------------------------------------------------
-   // ■ 初期化メソッド
-   //---------------------------------------------------------------------
-   bool Init() {
-      Print("[CLA_Data] 初期化開始");
+   //+------------------------------------------------------------------+
+   //| コンストラクタ                                                    |
+   //+------------------------------------------------------------------+
+   CLA_Data()
+   {
+      m_console_log_enabled = false;
+      m_log_buffer_size = 10000;  // 10000行分のログをメモリに保持
+      m_log_buffer_count = 0;
+      ArrayResize(m_log_buffer, m_log_buffer_size);
       
-      // ファイルロガー初期化
-      if(!m_file_logger.Init())
+      // レイヤー状態初期化
+      for(int i = 0; i < 6; i++)
       {
-         Print("[CLA_Data] 警告: ファイルロガーの初期化に失敗しました（メモリログのみ有効）");
-         // ファイルログ失敗でも続行（メモリログは有効）
+         m_layer_status[i] = STATUS_NONE;
       }
       
-      // 初期ログ記録
-      AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data Initialized");
+      // データ初期化
+      m_current_bid = 0.0;
+      m_current_ask = 0.0;
+      m_current_spread = 0.0;
+      m_current_time = 0;
+      m_rsi_value = 0.0;
       
-      Print("[CLA_Data] 初期化完了");
+      // Gatekeeper初期化
+      m_last_gk_result = GK_PASS;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 初期化                                                           |
+   //+------------------------------------------------------------------+
+   bool Init()
+   {
+      if(!m_logger.Init())
+      {
+         Print("[エラー] ファイルロガー初期化失敗");
+         return false;
+      }
+      
+      AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data初期化完了");
       return true;
    }
-
-   //---------------------------------------------------------------------
-   // ■ ログ記録メソッド (AddLog)
-   //---------------------------------------------------------------------
-   void AddLog(ENUM_FUNCTION_ID func_id, ulong tick_id, string action) {
-      // ========== メモリバッファへの書き込み ==========
-      m_logs[m_log_index].tick_id  = tick_id;
-      m_logs[m_log_index].func_id  = func_id;
-      m_logs[m_log_index].action   = action;
-      m_logs[m_log_index].time_msc = TimeLocal(); // 本当はミリ秒取得関数推奨
+   
+   //+------------------------------------------------------------------+
+   //| 終了処理                                                         |
+   //+------------------------------------------------------------------+
+   void Deinit()
+   {
+      AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data終了処理", true);
+      // CFileLoggerは都度クローズのためDeinit不要
+   }
+   
+   //+------------------------------------------------------------------+
+   //| コンソールログ有効/無効設定                                        |
+   //+------------------------------------------------------------------+
+   void SetConsoleLogEnabled(bool enabled)
+   {
+      m_console_log_enabled = enabled;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| ログ追加（重要ログフィルタ対応版）                                 |
+   //| important=trueの場合のみファイル出力                              |
+   //+------------------------------------------------------------------+
+   void AddLog(ENUM_FUNCTION_ID func_id, ulong tick_id, string message, bool important = false)
+   {
+      // ログレベルを決定（importantフラグから）
+      string level = important ? "IMPORTANT" : "DEBUG";
       
-      // インデックスを進める (100を超えたら0に戻る)
-      m_log_index++;
-      if(m_log_index >= 100) m_log_index = 0;
-      
-      // ========== ファイルへの書き込み（重要ログのみ） ==========
-      // パフォーマンス改善：通常ログはファイルに書き込まない
-      if(IsImportantLog(func_id, action))
+      // メモリバッファに保存（常に保存・簡易フォーマット）
+      if(m_log_buffer_count < m_log_buffer_size)
       {
-         m_file_logger.WriteLog(func_id, tick_id, action, "INFO");
+         string timestamp = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS);
+         string log_line = StringFormat("%s,Tick#%llu,Func#%d,%s",
+                                        timestamp,
+                                        tick_id,
+                                        func_id,
+                                        message);
+         m_log_buffer[m_log_buffer_count] = log_line;
+         m_log_buffer_count++;
       }
       
-      // ========== コンソール出力（制御可能） ==========
-      if(m_enable_console_log)
+      // 重要ログのみファイル出力
+      if(important)
       {
-         string s_func = EnumToString(func_id);
-         PrintFormat("[%s] Tick:%I64u %s", s_func, tick_id, action);
+         m_logger.WriteLog(func_id, tick_id, message, level);
+      }
+      
+      // コンソール出力（設定による）
+      if(m_console_log_enabled)
+      {
+         PrintFormat("[%s] Tick#%llu Func#%d: %s", level, tick_id, func_id, message);
       }
    }
    
-   //---------------------------------------------------------------------
-   // ■ 重要ログ判定
-   //---------------------------------------------------------------------
-   bool IsImportantLog(ENUM_FUNCTION_ID func_id, string action) {
-      // システム初期化/終了
-      if(func_id == FUNC_ID_CLA_DATA) return true;
+   //+------------------------------------------------------------------+
+   //| 全ログをファイルに出力（デバッグ用）                               |
+   //+------------------------------------------------------------------+
+   void FlushAllLogs()
+   {
+      // メモリバッファの全ログをファイルに書き出す
+      for(int i = 0; i < m_log_buffer_count; i++)
+      {
+         // バッファには簡易フォーマットで保存されているため
+         // ここでは全て「DEBUG」レベルとして出力
+         m_logger.WriteLog(FUNC_ID_CLA_DATA, i, m_log_buffer[i], "DEBUG");
+      }
       
-      // シグナル発生（🎯マーク付き）
-      if(StringFind(action, "🎯") >= 0) return true;
+      string flush_msg = StringFormat("全ログ出力完了: %d件", m_log_buffer_count);
+      m_logger.WriteLog(FUNC_ID_CLA_DATA, 0, flush_msg, "IMPORTANT");
       
-      // エラー/警告/失敗
-      if(StringFind(action, "エラー") >= 0) return true;
-      if(StringFind(action, "警告") >= 0) return true;
-      if(StringFind(action, "失敗") >= 0) return true;
-      
-      // 注文関連（執行層）
-      if(func_id == FUNC_ID_ORDER_GENERATOR || 
-         func_id == FUNC_ID_POSITION_MANAGER ||
-         func_id == FUNC_ID_CLOSE_JUDGE) return true;
-      
-      // 初期化/終了メッセージ
-      if(StringFind(action, "初期化") >= 0) return true;
-      if(StringFind(action, "終了") >= 0) return true;
-      
-      // それ以外は記録しない（パフォーマンス優先）
-      return false;
+      if(m_console_log_enabled)
+      {
+         Print("[CLA_Data] ", flush_msg);
+      }
    }
-
-   //---------------------------------------------------------------------
-   // ■ レイヤー状態管理
-   //---------------------------------------------------------------------
-   void SetLayerStatus(ENUM_FUNCTION_ID func_id, int layer_num, ENUM_LAYER_STATUS status) {
-      if(layer_num >= 0 && layer_num < ArraySize(m_layer_status)) {
+   
+   //+------------------------------------------------------------------+
+   //| レイヤー状態設定                                                  |
+   //+------------------------------------------------------------------+
+   void SetLayerStatus(int layer_num, ENUM_LAYER_STATUS status)
+   {
+      if(layer_num >= 0 && layer_num < ArraySize(m_layer_status))
+      {
          m_layer_status[layer_num] = status;
-         AddLog(func_id, 0, "Status Changed: " + EnumToString(status));
       }
    }
    
-   ENUM_LAYER_STATUS GetLayerStatus(int layer_num) {
-      if(layer_num >= 0 && layer_num < ArraySize(m_layer_status)) {
+   //+------------------------------------------------------------------+
+   //| レイヤー状態取得                                                  |
+   //+------------------------------------------------------------------+
+   ENUM_LAYER_STATUS GetLayerStatus(int layer_num)
+   {
+      if(layer_num >= 0 && layer_num < ArraySize(m_layer_status))
+      {
          return m_layer_status[layer_num];
       }
       return STATUS_NONE;
    }
+   
+   //+------------------------------------------------------------------+
+   //| 市場データ設定                                                    |
+   //+------------------------------------------------------------------+
+   void SetMarketData(double bid, double ask, double spread, datetime time)
+   {
+      m_current_bid = bid;
+      m_current_ask = ask;
+      m_current_spread = spread;
+      m_current_time = time;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| RSI値設定                                                        |
+   //+------------------------------------------------------------------+
+   void SetRSI(double rsi)
+   {
+      m_rsi_value = rsi;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| RSI値取得                                                        |
+   //+------------------------------------------------------------------+
+   double GetRSI() const
+   {
+      return m_rsi_value;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Gatekeeper結果設定（Phase 2追加）                                |
+   //| 異常時は自動的にログ記録を行う                                     |
+   //+------------------------------------------------------------------+
+   void SetGatekeeperResult(ENUM_GK_RESULT result, ulong tick_id = 0)
+   {
+      m_last_gk_result = result;
+      
+      // 正常(PASS)以外ならログに残す
+      if(result != GK_PASS)
+      {
+         string reason_text = GetGKReasonText(result);
+         string log_msg = StringFormat("⛔ Gatekeeper遮断: %s", reason_text);
+         
+         // 重要ログとして記録（MIA分析用）
+         AddLog(FUNC_ID_GATEKEEPER, tick_id, log_msg, true);
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Gatekeeper結果取得（Phase 2追加）                                |
+   //+------------------------------------------------------------------+
+   ENUM_GK_RESULT GetGatekeeperResult() const
+   {
+      return m_last_gk_result;
+   }
 };
 
-//------------------------------------------------------------------------
-// ■ グローバルインスタンス定義
-//------------------------------------------------------------------------
-// これをIncludeした瞬間に、システム全体で使える変数 g_data が生まれる
+//+------------------------------------------------------------------+
+//| グローバルインスタンス                                             |
+//| ★★★ 超重要：これがないとAegis_Coreでエラーになる ★★★            |
+//+------------------------------------------------------------------+
 CLA_Data g_data;
+
+//+------------------------------------------------------------------+
