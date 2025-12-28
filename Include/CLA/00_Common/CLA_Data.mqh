@@ -17,28 +17,36 @@ class CLA_Data
 {
 private:
    // ========== ログ管理 ==========
-   CFileLogger m_logger;                    // ファイルロガー
-   bool        m_console_log_enabled;       // コンソールログ有効フラグ
+   CFileLogger m_logger;
+   bool        m_console_log_enabled;
    
-   // ========== メモリバッファ（重要ログフィルタ用） ==========
-   string      m_log_buffer[];              // 全ログをメモリに保持
-   int         m_log_buffer_size;           // バッファサイズ
-   int         m_log_buffer_count;          // 現在のログ数
+   // ========== メモリバッファ ==========
+   string      m_log_buffer[];
+   int         m_log_buffer_size;
+   int         m_log_buffer_count;
    
    // ========== レイヤー状態管理 ==========
-   ENUM_LAYER_STATUS m_layer_status[6];     // 各レイヤーの状態
+   ENUM_LAYER_STATUS m_layer_status[6];
    
    // ========== 市場データ ==========
-   double      m_current_bid;               // 現在のBid価格
-   double      m_current_ask;               // 現在のAsk価格
-   double      m_current_spread;            // 現在のスプレッド
-   datetime    m_current_time;              // 現在時刻
+   double      m_current_bid;
+   double      m_current_ask;
+   double      m_current_spread;
+   datetime    m_current_time;
    
    // ========== 観測データ ==========
-   double      m_rsi_value;                 // RSI値
+   double      m_rsi_value;
    
-   // ========== Gatekeeper状態（Phase 2追加） ==========
-   ENUM_GK_RESULT m_last_gk_result;         // 最後のGatekeeper判定結果
+   // ========== Gatekeeper状態 ==========
+   ENUM_GK_RESULT m_last_gk_result;
+   
+   // ========== Execution状態管理（Phase 2追加） ==========
+   ENUM_EXEC_STATE    m_exec_state;
+   bool               m_exec_locked;
+   ENUM_EXEC_REQUEST  m_exec_current_request;
+   ENUM_EXEC_RESULT   m_exec_last_result;
+   string             m_exec_last_reason;
+   ulong              m_exec_last_tick_id;
    
 public:
    //+------------------------------------------------------------------+
@@ -47,25 +55,30 @@ public:
    CLA_Data()
    {
       m_console_log_enabled = false;
-      m_log_buffer_size = 10000;  // 10000行分のログをメモリに保持
+      m_log_buffer_size = 10000;
       m_log_buffer_count = 0;
       ArrayResize(m_log_buffer, m_log_buffer_size);
       
-      // レイヤー状態初期化
       for(int i = 0; i < 6; i++)
       {
          m_layer_status[i] = STATUS_NONE;
       }
       
-      // データ初期化
       m_current_bid = 0.0;
       m_current_ask = 0.0;
       m_current_spread = 0.0;
       m_current_time = 0;
       m_rsi_value = 0.0;
       
-      // Gatekeeper初期化
       m_last_gk_result = GK_PASS;
+      
+      // ★Phase 2: Execution初期化
+      m_exec_state = EXEC_STATE_IDLE;
+      m_exec_locked = false;
+      m_exec_current_request = EXEC_REQ_NONE;
+      m_exec_last_result = EXEC_RESULT_NONE;
+      m_exec_last_reason = "";
+      m_exec_last_tick_id = 0;
    }
    
    //+------------------------------------------------------------------+
@@ -89,7 +102,6 @@ public:
    void Deinit()
    {
       AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data終了処理", true);
-      // CFileLoggerは都度クローズのためDeinit不要
    }
    
    //+------------------------------------------------------------------+
@@ -101,15 +113,12 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| ログ追加（重要ログフィルタ対応版）                                 |
-   //| important=trueの場合のみファイル出力                              |
+   //| ログ追加                                                         |
    //+------------------------------------------------------------------+
    void AddLog(ENUM_FUNCTION_ID func_id, ulong tick_id, string message, bool important = false)
    {
-      // ログレベルを決定（importantフラグから）
       string level = important ? "IMPORTANT" : "DEBUG";
       
-      // メモリバッファに保存（常に保存・簡易フォーマット）
       if(m_log_buffer_count < m_log_buffer_size)
       {
          string timestamp = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS);
@@ -122,13 +131,11 @@ public:
          m_log_buffer_count++;
       }
       
-      // 重要ログのみファイル出力
       if(important)
       {
          m_logger.WriteLog(func_id, tick_id, message, level);
       }
       
-      // コンソール出力（設定による）
       if(m_console_log_enabled)
       {
          PrintFormat("[%s] Tick#%llu Func#%d: %s", level, tick_id, func_id, message);
@@ -136,15 +143,12 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| 全ログをファイルに出力（デバッグ用）                               |
+   //| 全ログをファイルに出力                                            |
    //+------------------------------------------------------------------+
    void FlushAllLogs()
    {
-      // メモリバッファの全ログをファイルに書き出す
       for(int i = 0; i < m_log_buffer_count; i++)
       {
-         // バッファには簡易フォーマットで保存されているため
-         // ここでは全て「DEBUG」レベルとして出力
          m_logger.WriteLog(FUNC_ID_CLA_DATA, i, m_log_buffer[i], "DEBUG");
       }
       
@@ -208,36 +212,130 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| Gatekeeper結果設定（Phase 2追加）                                |
-   //| 異常時は自動的にログ記録を行う                                     |
+   //| Gatekeeper結果設定                                                |
    //+------------------------------------------------------------------+
    void SetGatekeeperResult(ENUM_GK_RESULT result, ulong tick_id = 0)
    {
       m_last_gk_result = result;
       
-      // 正常(PASS)以外ならログに残す
       if(result != GK_PASS)
       {
          string reason_text = GetGKReasonText(result);
          string log_msg = StringFormat("⛔ Gatekeeper遮断: %s", reason_text);
-         
-         // 重要ログとして記録（MIA分析用）
          AddLog(FUNC_ID_GATEKEEPER, tick_id, log_msg, true);
       }
    }
    
    //+------------------------------------------------------------------+
-   //| Gatekeeper結果取得（Phase 2追加）                                |
+   //| Gatekeeper結果取得                                                |
    //+------------------------------------------------------------------+
    ENUM_GK_RESULT GetGatekeeperResult() const
    {
       return m_last_gk_result;
    }
+   
+   // ========== Phase 2: Execution状態管理メソッド ==========
+   
+   //+------------------------------------------------------------------+
+   //| Execution状態取得                                                |
+   //+------------------------------------------------------------------+
+   ENUM_EXEC_STATE GetExecState() const 
+   { 
+      return m_exec_state; 
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Executionロック状態取得                                          |
+   //+------------------------------------------------------------------+
+   bool IsExecLocked() const 
+   { 
+      return m_exec_locked; 
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Execution状態設定（ログ自動記録）★修正版                          |
+   //+------------------------------------------------------------------+
+   void SetExecState(ENUM_EXEC_STATE state, ulong tick_id, string reason = "")
+   {
+      // ★修正: 変更前の状態を保存
+      ENUM_EXEC_STATE prev = m_exec_state;
+      m_exec_state = state;
+      m_exec_last_tick_id = tick_id;
+      
+      // 状態変更は重要ログとして記録
+      string log_msg = StringFormat("Execution状態変更: %s → %s (%s)",
+                                    EnumToString(prev),  // ★修正: 変更前
+                                    EnumToString(state), // 変更後
+                                    reason != "" ? reason : "理由なし");
+      AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, log_msg, true);
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Executionロック設定                                              |
+   //+------------------------------------------------------------------+
+   void SetExecLock(bool locked, ulong tick_id)
+   {
+      m_exec_locked = locked;
+      
+      if(locked)
+      {
+         AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, "⚠️ Executionロック設定", true);
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Execution結果記録                                                |
+   //+------------------------------------------------------------------+
+   void SetExecResult(ENUM_EXEC_RESULT result, string reason, ulong tick_id)
+   {
+      m_exec_last_result = result;
+      m_exec_last_reason = reason;
+      
+      bool is_important = (result != EXEC_RESULT_SUCCESS);
+      string log_msg = StringFormat("Execution結果: %s - %s",
+                                    EnumToString(result),
+                                    reason);
+      AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, log_msg, is_important);
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Execution操作要求設定                                            |
+   //+------------------------------------------------------------------+
+   void SetExecRequest(ENUM_EXEC_REQUEST request, ulong tick_id)
+   {
+      m_exec_current_request = request;
+      
+      if(request != EXEC_REQ_NONE)
+      {
+         string log_msg = StringFormat("Execution要求受付: %s", EnumToString(request));
+         AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, log_msg, false);
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 現在の操作要求取得                                                |
+   //+------------------------------------------------------------------+
+   ENUM_EXEC_REQUEST GetExecRequest() const 
+   { 
+      return m_exec_current_request; 
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 最後の実行結果取得                                                |
+   //+------------------------------------------------------------------+
+   ENUM_EXEC_RESULT GetExecLastResult() const 
+   { 
+      return m_exec_last_result; 
+   }
+   
+   string GetExecLastReason() const 
+   { 
+      return m_exec_last_reason; 
+   }
 };
 
 //+------------------------------------------------------------------+
 //| グローバルインスタンス                                             |
-//| ★★★ 超重要：これがないとAegis_Coreでエラーになる ★★★            |
 //+------------------------------------------------------------------+
 CLA_Data g_data;
 
