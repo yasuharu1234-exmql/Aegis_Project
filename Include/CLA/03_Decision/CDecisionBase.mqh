@@ -1,8 +1,24 @@
 //+------------------------------------------------------------------+
-//|                                            CDecisionBase.mqh     |
-//|                                  Copyright 2025, Aegis Project   |
-//|                          https://github.com/YasuharuEA/Aegis     |
+//| File: CDecisionBase.mqh                                          |
+//|                                                                  |
+//| Role: Decision（Strategy）層の基底クラス                         |
+//|                                                                  |
+//| Responsibility:                                                  |
+//|  - Observation 層が提供するデータを基に「判断」を行う            |
+//|  - 売買の意思（シグナル）を生成する                              |
+//|  - 実行そのものは一切行わない                                    |
+//|                                                                  |
+//| Design Policy (Aegis 憲法):                                      |
+//|  - 判断と実行を完全に分離する                                    |
+//|  - Execution 層の実装詳細を一切知らない                          |
+//|  - 実行要求は CLA_Data を介して伝達するのみ                     |
+//|                                                                  |
+//| Note:                                                            |
+//|  - 本クラスは Strategy 実装の共通基盤として使用される           |
+//|  - Phase 2 以降で Execution 構造が拡張されても                   |
+//|    Decision 層の責務は変わらない                                 |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
 #property link        "https://github.com/YasuharuEA/Aegis"
 #property strict
@@ -12,23 +28,21 @@
 //+------------------------------------------------------------------+
 #include "../00_Common/CLA_Common.mqh"
 #include "../00_Common/CLA_Data.mqh"
-
 //+------------------------------------------------------------------+
-//| 判断基底クラス                                                      |
+//| Class: CDecisionBase                                             |
 //|                                                                  |
-//| [概要]                                                            |
-//|   全ての判断ロジック（ロジックA、ロジックB等）の親クラス。           |
-//|   観測層が集めた情報を読み取り、エントリー・決済の判断を下す。        |
+//| Layer: Decision / Strategy                                      |
 //|                                                                  |
-//| [設計思想]                                                         |
-//|   - 判断は「事実に基づく意思決定」                                    |
-//|   - 実行はしない（Execution層の仕事）                                |
-//|   - 複数の判断ロジックが共存可能                                      |
-//|   - 優先度により判断を上書き可能                                      |
+//| Responsibility:                                                  |
+//|  - 各戦略クラス（RSI 等）の基底クラス                            |
+//|  - 戦略固有の判断ロジックを Execute() に委譲                     |
 //|                                                                  |
-//| [継承例]                                                          |
-//|   class CDecisionRSISimple : public CDecisionBase { ... }        |
-//|   class CDecisionMACD      : public CDecisionBase { ... }        |
+//| Aegis 憲法:                                                      |
+//|  - 「判断はするが、実行はしない」                                |
+//|  - 売買の可否を決めるが、注文処理は Execution 層に任せる        |
+//|                                                                  |
+//| Usage:                                                           |
+//|  - 各 Strategy クラスは本クラスを継承して実装する               |
 //+------------------------------------------------------------------+
 class CDecisionBase
 {

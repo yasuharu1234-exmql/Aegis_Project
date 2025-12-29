@@ -1,7 +1,31 @@
 ﻿//+------------------------------------------------------------------+
-//|                                                    CLA_Data.mqh |
-//|                                  Copyright 2025, Aegis Project   |
+//| File    : CLA_Data.mqh                                           |
+//| Project : Aegis Hybrid EA                                       |
+//| Layer   : Common / Context                                      |
+//|                                                                  |
+//| Role                                                             |
+//|  - 各レイヤー（Gatekeeper / Observation / Decision / Execution） |
+//|    間で共有される「状態・結果・文脈」を保持する                  |
+//|  - Aegisにおける唯一の状態集約ポイント                           |
+//|                                                                  |
+//| Core Concept                                                     |
+//|  - Aegisは「壊れた理由を説明できるEA」を目指す                   |
+//|  - 本クラスはそのための“証拠保管庫”である                        |
+//|                                                                  |
+//| Design Policy                                                    |
+//|  - 判断ロジックは一切持たない                                    |
+//|  - 状態・結果・理由のみを保持する                                |
+//|  - 各レイヤーは CLA_Data 経由でのみ情報共有を行う                |
+//|                                                                  |
+//| Phase 2 Notes                                                    |
+//|  - Execution層の状態・要求・結果が追加される                     |
+//|  - 既存メンバの意味は絶対に変更しない                            |
+//|                                                                  |
+//| Change Policy                                                    |
+//|  - 拡張のみ許可（削除・再設計・再配置は禁止）                    |
+//|                                                                  |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
 #property version     "1.20"
 #property strict
@@ -340,3 +364,5 @@ public:
 CLA_Data g_data;
 
 //+------------------------------------------------------------------+
+
+

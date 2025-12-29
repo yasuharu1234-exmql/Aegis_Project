@@ -1,7 +1,26 @@
 ﻿//+------------------------------------------------------------------+
-//|                                                  CLA_Common.mqh |
-//|                                  Copyright 2025, Aegis Project   |
+//| File    : CLA_Common.mqh                                         |
+//| Project : Aegis Hybrid EA                                       |
+//| Layer   : Common (Shared Definitions)                            |
+//|                                                                  |
+//| Role                                                             |
+//|  - Aegis全体で共有される定数・列挙型・共通構造体を定義する       |
+//|  - レイヤー間通信の「共通語彙」を提供する                        |
+//|                                                                  |
+//| Design Policy                                                    |
+//|  - このファイルは「定義のみ」を扱う                              |
+//|  - ロジック・状態・実装コードは一切含めない                      |
+//|  - 既存定義の意味・名前は変更しない                              |
+//|                                                                  |
+//| Phase 2 Notes                                                    |
+//|  - Execution層との接続に必要な型が追加される予定                 |
+//|  - 既存コードとの後方互換性を最優先とする                        |
+//|                                                                  |
+//| Change Policy                                                    |
+//|  - 追加は可、削除・改名・意味変更は禁止                          |
+//|                                                                  |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
 #property version     "1.20"
 #property strict

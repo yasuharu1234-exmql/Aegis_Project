@@ -1,7 +1,32 @@
 ﻿//+------------------------------------------------------------------+
-//|                                         CExecutionManager.mqh    |
-//|                                  Copyright 2025, Aegis Project   |
+//| File    : CExecutionManager.mqh                                  |
+//| Project : Aegis Hybrid EA                                       |
+//| Layer   : Execution                                              |
+//|                                                                  |
+//| Role                                                             |
+//|  - Strategy層から渡された実行要求を処理する                      |
+//|  - OrderSend / Modify / Close 等の「実行のみ」を担当             |
+//|                                                                  |
+//| Core Principle                                                   |
+//|  - 判断しない                                                    |
+//|  - 例外を握りつぶさない                                          |
+//|  - 結果と理由を Context（CLA_Data）に正確に記録する              |
+//|                                                                  |
+//| Design Policy                                                    |
+//|  - 戻り値 bool は「EAを即死させるべきか」のみを表す               |
+//|  - 成功／失敗の詳細は必ず CLA_Data に書き込む                    |
+//|  - Strategy層の意図を勝手に補完・修正しない                      |
+//|                                                                  |
+//| Phase 2 Notes                                                    |
+//|  - PLACE / MODIFY / CANCEL / CLOSE を段階的に実装予定            |
+//|  - REPLACE は CANCEL + PLACE に分解して扱う                      |
+//|                                                                  |
+//| Change Policy                                                    |
+//|  - 実装拡張は可                                                  |
+//|  - 判断ロジックの追加は禁止                                      |
+//|                                                                  |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
 #property strict
 
@@ -10,7 +35,17 @@
 #include "CExecutionBase.mqh"
 
 //+------------------------------------------------------------------+
-//| Execution管理クラス（Phase 2骨格実装）                            |
+//| Class   : CExecutionManager                                      |
+//| Layer   : Execution                                              |
+//|                                                                  |
+//| Responsibility                                                  |
+//|  - 実行要求のディスパッチ                                        |
+//|  - 実行状態の遷移管理（IDLE / IN_PROGRESS / APPLIED / FAILED）  |
+//|                                                                  |
+//| Important                                                        |
+//|  - このクラスは「安全装置付きの引き金」である                    |
+//|  - 引くかどうかを決めるのは Strategy 層                          |
+//|                                                                  |
 //+------------------------------------------------------------------+
 class CExecutionManager : public CExecutionBase
 {

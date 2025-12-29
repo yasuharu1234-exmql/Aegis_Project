@@ -1,7 +1,32 @@
 ﻿//+------------------------------------------------------------------+
-//|                                               Aegis_Core.mqh     |
-//|                                  Copyright 2025, Aegis Project   |
+//| File    : Aegis_Core.mqh                                         |
+//| Project : Aegis Hybrid EA                                       |
+//|                                                                  |
+//| Role                                                             |
+//|  - Aegis 全体の制御フローを統括する中枢                          |
+//|  - 各レイヤーの呼び出し順序と責務境界を保証する                  |
+//|                                                                  |
+//| Execution Order                                                  |
+//|  1. Gatekeeper   : 実行可否の事前チェック                        |
+//|  2. Observation  : 市場データの観測                              |
+//|  3. Decision     : 売買判断                                      |
+//|  4. Execution    : 注文実行                                      |
+//|                                                                  |
+//| Design Philosophy                                                |
+//|  - 各レイヤーは互いに直接干渉しない                              |
+//|  - データ共有は CLA_Data のみを通して行う                        |
+//|  - ロジックは薄く、流れは明確に                                 |
+//|                                                                  |
+//| Phase 2 Notes                                                    |
+//|  - Strategy ⇔ Execution の接続確認フェーズ                       |
+//|  - ダミー実行コードは排除済み                                    |
+//|                                                                  |
+//| Change Policy                                                    |
+//|  - 処理順序の変更は慎重に行う                                    |
+//|  - レイヤー統合は禁止                                           |
+//|                                                                  |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
 #property link        "https://github.com/YasuharuEA/Aegis"
 #property version     "1.30"  // ★Phase 2 骨格実装
