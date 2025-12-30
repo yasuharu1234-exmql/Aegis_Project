@@ -20,6 +20,7 @@
 //| Phase 2 Notes                                                    |
 //|  - PLACE / MODIFY / CANCEL / CLOSE を段階的に実装予定            |
 //|  - REPLACE は CANCEL + PLACE に分解して扱う                      |
+//|  - Task #5 で確定した API のみ使用                               |
 //|                                                                  |
 //| Change Policy                                                    |
 //|  - 実装拡張は可                                                  |
@@ -69,7 +70,7 @@ public:
          return false;
       }
       
-      Print("[ExecutionManager] 骨格実装初期化完了");
+      Print("[ExecutionManager] Phase 2 骨格実装初期化完了");
       return true;
    }
    
@@ -90,31 +91,13 @@ public:
    //-------------------------------------------------------------------
    bool Execute(CLA_Data &data, ulong tick_id)
    {
-      // ========== ロック解除（前Tickのロックをクリア） ==========
-      if(data.IsExecLocked())
-      {
-         data.SetExecLock(false, tick_id);
-      }
-      
       // ========== 状態チェック ==========
       ENUM_EXEC_STATE current_state = data.GetExecState();
-      
-      // BLOCKED状態の場合
-      if(current_state == EXEC_STATE_BLOCKED)
-      {
-         data.SetExecResult(EXEC_RESULT_REJECTED, 
-                           "BLOCKED状態のため実行不可", 
-                           tick_id);
-         return true;
-      }
       
       // 再入防止
       if(current_state == EXEC_STATE_IN_PROGRESS)
       {
-         data.SetExecLock(true, tick_id);
-         data.SetExecResult(EXEC_RESULT_REJECTED,
-                           "処理中のため再入禁止",
-                           tick_id);
+         data.SetExecResult(EXEC_RESULT_REJECTED, "処理中のため再入禁止", tick_id);
          return true;
       }
       
@@ -152,9 +135,7 @@ public:
             success = HandleClose(data, tick_id);
             break;
          default:
-            data.SetExecResult(EXEC_RESULT_INVALID_PARAMS,
-                              "未知の操作要求",
-                              tick_id);
+            data.SetExecResult(EXEC_RESULT_REJECTED, "未知の操作要求", tick_id);
             data.SetExecState(EXEC_STATE_FAILED, tick_id, "未知の要求");
             return true;
       }
@@ -167,18 +148,7 @@ public:
       }
       else
       {
-         ENUM_EXEC_RESULT result = data.GetExecLastResult();
-         
-         if(result == EXEC_RESULT_FATAL_ERROR)
-         {
-            data.SetExecState(EXEC_STATE_BLOCKED, tick_id, "致命的エラー");
-            Print("[ExecutionManager] ❌ 致命的エラー検出 - EA停止");
-            return false;
-         }
-         else
-         {
-            data.SetExecState(EXEC_STATE_FAILED, tick_id, "処理失敗");
-         }
+         data.SetExecState(EXEC_STATE_FAILED, tick_id, "処理失敗");
       }
       
       // 要求クリア
@@ -189,67 +159,26 @@ public:
    
 private:
    //-------------------------------------------------------------------
-   //| 新規注文処理（ダミー実装 - 分岐パターン追加）                      |
+   //| 新規注文処理（ダミー実装）                                         |
    //-------------------------------------------------------------------
    bool HandlePlace(CLA_Data &data, ulong tick_id)
    {
-      Print("[ExecutionManager] 🔷 PLACE処理開始（ダミー）");
-      
       // ========== ダミー分岐条件 ==========
       // Tick ID の末尾桁で結果を分岐
       int pattern = (int)(tick_id % 10);
       
-      // ========================================
-      // パターン1: 成功（APPLIED）
-      // TickID末尾が 0, 2, 4, 6, 8 の場合
-      // ========================================
-      if(pattern == 0 || pattern == 2 || pattern == 4 || pattern == 6 || pattern == 8)
+      // パターン1: 成功（偶数）
+      if(pattern % 2 == 0)
       {
          data.SetExecResult(EXEC_RESULT_SUCCESS, 
-                           StringFormat("注文成功（ダミー）TickID=%llu", tick_id),
-                           tick_id);
-         Print("[ExecutionManager] ✅ PLACE成功パターン");
+                           StringFormat("注文成功（ダミー）TickID=%llu", tick_id), tick_id);
          return true;
       }
-      
-      // ========================================
-      // パターン2: 非致命的失敗（FAILED）
-      // TickID末尾が 1, 3, 7 の場合
-      // ========================================
-      else if(pattern == 1 || pattern == 3 || pattern == 7)
-      {
-         // リクオート（再試行可能）
-         data.SetExecResult(EXEC_RESULT_REQUOTE,
-                           StringFormat("リクオート発生（ダミー）TickID=%llu - Strategyは次Tickで再判断可能", tick_id),
-                           tick_id);
-         Print("[ExecutionManager] ⚠️ PLACE失敗（リクオート） - 非致命的");
-         return false; // 失敗だが再試行可能
-      }
-      
-      // ========================================
-      // パターン3: ブロック状態（実行抑止）
-      // TickID末尾が 5 の場合
-      // ========================================
-      else if(pattern == 5)
-      {
-         // スプレッド異常などの物理条件NG
-         data.SetExecResult(EXEC_RESULT_REJECTED,
-                           StringFormat("物理条件NG（ダミー）TickID=%llu - スプレッド異常を想定", tick_id),
-                           tick_id);
-         Print("[ExecutionManager] 🚫 PLACE失敗（物理条件NG） - BLOCKED相当");
-         return false;
-      }
-      
-      // ========================================
-      // パターン4: その他（念のため）
-      // TickID末尾が 9 の場合
-      // ========================================
+      // パターン2: 失敗（奇数）
       else
       {
-         data.SetExecResult(EXEC_RESULT_REJECTED,
-                           StringFormat("その他エラー（ダミー）TickID=%llu", tick_id),
-                           tick_id);
-         Print("[ExecutionManager] ⚠️ PLACE失敗（その他）");
+         data.SetExecResult(EXEC_RESULT_REJECTED, 
+                           StringFormat("注文失敗（ダミー）TickID=%llu", tick_id), tick_id);
          return false;
       }
    }
@@ -259,7 +188,7 @@ private:
    //-------------------------------------------------------------------
    bool HandleModify(CLA_Data &data, ulong tick_id)
    {
-      Print("[ExecutionManager] 🔷 MODIFY処理（ダミー）");
+      data.SetExecResult(EXEC_RESULT_SUCCESS, "MODIFY処理（ダミー）", tick_id);
       return true;
    }
    
@@ -268,7 +197,7 @@ private:
    //-------------------------------------------------------------------
    bool HandleCancel(CLA_Data &data, ulong tick_id)
    {
-      Print("[ExecutionManager] 🔷 CANCEL処理（ダミー）");
+      data.SetExecResult(EXEC_RESULT_SUCCESS, "CANCEL処理（ダミー）", tick_id);
       return true;
    }
    
@@ -277,7 +206,7 @@ private:
    //-------------------------------------------------------------------
    bool HandleClose(CLA_Data &data, ulong tick_id)
    {
-      Print("[ExecutionManager] 🔷 CLOSE処理（ダミー）");
+      data.SetExecResult(EXEC_RESULT_SUCCESS, "CLOSE処理（ダミー）", tick_id);
       return true;
    }
 };
