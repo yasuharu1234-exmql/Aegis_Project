@@ -1,4 +1,4 @@
-# Aegis_Project
+﻿# Aegis_Project
 
 Aegis_Project は、MetaTrader 4 / MetaTrader 5 向けに開発された  
 **Aegis シリーズ EA の共通基盤となるプロジェクト** です。
