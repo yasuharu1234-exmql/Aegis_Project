@@ -72,6 +72,17 @@ private:
    string             m_exec_last_reason;
    ulong              m_exec_last_tick_id;
    
+   
+   // ========== OCO注文パラメータ（Sprint A追加） ==========
+   ulong              m_oco_buy_ticket;        // BuyStop注文チケット
+   ulong              m_oco_sell_ticket;       // SellStop注文チケット
+   double             m_oco_buy_price;         // BuyStop価格
+   double             m_oco_sell_price;        // SellStop価格
+   double             m_oco_lot;               // ロットサイズ
+   double             m_oco_sl_points;         // SL（ポイント）
+   double             m_oco_tp_points;         // TP（ポイント）
+   int                m_oco_magic;             // マジックナンバー
+   double             m_oco_distance_points;   // OCO配置距離（ポイント）
 public:
    //+------------------------------------------------------------------+
    //| コンストラクタ                                                    |
@@ -103,6 +114,17 @@ public:
       m_exec_last_result = EXEC_RESULT_NONE;
       m_exec_last_reason = "";
       m_exec_last_tick_id = 0;
+      
+      // ★Sprint A: OCO注文パラメータ初期化
+      m_oco_buy_ticket = 0;
+      m_oco_sell_ticket = 0;
+      m_oco_buy_price = 0.0;
+      m_oco_sell_price = 0.0;
+      m_oco_lot = 0.01;
+      m_oco_sl_points = 0.0;
+      m_oco_tp_points = 0.0;
+      m_oco_magic = 0;
+      m_oco_distance_points = 0.0;
    }
    
    //+------------------------------------------------------------------+
@@ -356,6 +378,62 @@ public:
    { 
       return m_exec_last_reason; 
    }
+   
+   // ========== OCO注文パラメータ getter/setter（Sprint A追加） ==========
+   
+   //+------------------------------------------------------------------+
+   //| OCO BuyStop チケット設定/取得                                     |
+   //+------------------------------------------------------------------+
+   void SetOCOBuyTicket(ulong ticket) { m_oco_buy_ticket = ticket; }
+   ulong GetOCOBuyTicket() const { return m_oco_buy_ticket; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO SellStop チケット設定/取得                                    |
+   //+------------------------------------------------------------------+
+   void SetOCOSellTicket(ulong ticket) { m_oco_sell_ticket = ticket; }
+   ulong GetOCOSellTicket() const { return m_oco_sell_ticket; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO BuyStop 価格設定/取得                                         |
+   //+------------------------------------------------------------------+
+   void SetOCOBuyPrice(double price) { m_oco_buy_price = price; }
+   double GetOCOBuyPrice() const { return m_oco_buy_price; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO SellStop 価格設定/取得                                        |
+   //+------------------------------------------------------------------+
+   void SetOCOSellPrice(double price) { m_oco_sell_price = price; }
+   double GetOCOSellPrice() const { return m_oco_sell_price; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO ロットサイズ設定/取得                                         |
+   //+------------------------------------------------------------------+
+   void SetOCOLot(double lot) { m_oco_lot = lot; }
+   double GetOCOLot() const { return m_oco_lot; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO SL(ポイント)設定/取得                                         |
+   //+------------------------------------------------------------------+
+   void SetOCOSLPoints(double points) { m_oco_sl_points = points; }
+   double GetOCOSLPoints() const { return m_oco_sl_points; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO TP(ポイント)設定/取得                                         |
+   //+------------------------------------------------------------------+
+   void SetOCOTPPoints(double points) { m_oco_tp_points = points; }
+   double GetOCOTPPoints() const { return m_oco_tp_points; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO マジックナンバー設定/取得                                      |
+   //+------------------------------------------------------------------+
+   void SetOCOMagic(int magic) { m_oco_magic = magic; }
+   int GetOCOMagic() const { return m_oco_magic; }
+   
+   //+------------------------------------------------------------------+
+   //| OCO 配置距離(ポイント)設定/取得                                    |
+   //+------------------------------------------------------------------+
+   void SetOCODistancePoints(double points) { m_oco_distance_points = points; }
+   double GetOCODistancePoints() const { return m_oco_distance_points; }
 };
 
 //+------------------------------------------------------------------+
@@ -364,5 +442,3 @@ public:
 CLA_Data g_data;
 
 //+------------------------------------------------------------------+
-
-

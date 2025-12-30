@@ -159,54 +159,431 @@ public:
    
 private:
    //-------------------------------------------------------------------
-   //| 新規注文処理（ダミー実装）                                         |
+   //-------------------------------------------------------------------
+   //| 新規注文処理（OCO: BuyStop + SellStop）                           |
    //-------------------------------------------------------------------
    bool HandlePlace(CLA_Data &data, ulong tick_id)
    {
-      // ========== ダミー分岐条件 ==========
-      // Tick ID の末尾桁で結果を分岐
-      int pattern = (int)(tick_id % 10);
+      // ========== OCOパラメータ取得 ==========
+      double lot = data.GetOCOLot();
+      double distance_points = data.GetOCODistancePoints();
+      double sl_points = data.GetOCOSLPoints();
+      double tp_points = data.GetOCOTPPoints();
+      int magic = data.GetOCOMagic();
       
-      // パターン1: 成功（偶数）
-      if(pattern % 2 == 0)
+      // ========== 現在価格取得 ==========
+      double ask = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+      double bid = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+      double point = SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+      
+      if(ask <= 0 || bid <= 0 || point <= 0)
       {
-         data.SetExecResult(EXEC_RESULT_SUCCESS, 
-                           StringFormat("注文成功（ダミー）TickID=%llu", tick_id), tick_id);
+         data.SetExecResult(EXEC_RESULT_REJECTED, "価格情報取得失敗", tick_id);
+         Print("❌ [HandlePlace] 価格情報取得失敗");
+         return false;
+      }
+      
+      // ========== OCO価格計算 ==========
+      double buy_price = ask + (distance_points * point);
+      double sell_price = bid - (distance_points * point);
+      
+      // 価格を正規化
+      int digits = (int)SymbolInfoInteger(Symbol(), SYMBOL_DIGITS);
+      buy_price = NormalizeDouble(buy_price, digits);
+      sell_price = NormalizeDouble(sell_price, digits);
+      
+      // ========== BuyStop 発注 ==========
+      MqlTradeRequest request_buy = {};
+      MqlTradeResult result_buy = {};
+      
+      request_buy.action = TRADE_ACTION_PENDING;
+      request_buy.symbol = Symbol();
+      request_buy.volume = lot;
+      request_buy.type = ORDER_TYPE_BUY_STOP;
+      request_buy.price = buy_price;
+      request_buy.sl = (sl_points > 0) ? buy_price - (sl_points * point) : 0;
+      request_buy.tp = (tp_points > 0) ? buy_price + (tp_points * point) : 0;
+      request_buy.deviation = m_slippage;
+      request_buy.magic = magic;
+      request_buy.comment = "Aegis_OCO_Buy";
+      
+      if(!OrderSend(request_buy, result_buy))
+      {
+         string error_msg = StringFormat("BuyStop発注失敗: エラーコード=%d, %s", 
+                                        GetLastError(), result_buy.comment);
+         data.SetExecResult(EXEC_RESULT_REJECTED, error_msg, tick_id);
+         Print("❌ [HandlePlace] ", error_msg);
+         return false;
+      }
+      
+      if(result_buy.retcode != TRADE_RETCODE_DONE && result_buy.retcode != TRADE_RETCODE_PLACED)
+      {
+         string error_msg = StringFormat("BuyStop配置失敗: retcode=%d, %s", 
+                                        result_buy.retcode, result_buy.comment);
+         data.SetExecResult(EXEC_RESULT_REJECTED, error_msg, tick_id);
+         Print("❌ [HandlePlace] ", error_msg);
+         return false;
+      }
+      
+      Print("✅ [HandlePlace] BuyStop発注成功: チケット=", result_buy.order, 
+            " 価格=", buy_price);
+      
+      // ========== SellStop 発注 ==========
+      MqlTradeRequest request_sell = {};
+      MqlTradeResult result_sell = {};
+      
+      request_sell.action = TRADE_ACTION_PENDING;
+      request_sell.symbol = Symbol();
+      request_sell.volume = lot;
+      request_sell.type = ORDER_TYPE_SELL_STOP;
+      request_sell.price = sell_price;
+      request_sell.sl = (sl_points > 0) ? sell_price + (sl_points * point) : 0;
+      request_sell.tp = (tp_points > 0) ? sell_price - (tp_points * point) : 0;
+      request_sell.deviation = m_slippage;
+      request_sell.magic = magic;
+      request_sell.comment = "Aegis_OCO_Sell";
+      
+      if(!OrderSend(request_sell, result_sell))
+      {
+         string error_msg = StringFormat("SellStop発注失敗: エラーコード=%d, %s", 
+                                        GetLastError(), result_sell.comment);
+         // BuyStopをキャンセル（ロールバック）
+         MqlTradeRequest cancel_req = {};
+         MqlTradeResult cancel_res = {};
+         cancel_req.action = TRADE_ACTION_REMOVE;
+         cancel_req.order = result_buy.order;
+         
+         if(!OrderSend(cancel_req, cancel_res))
+         {
+            int cancel_error = GetLastError();
+            Print("⚠️ [HandlePlace] BuyStopキャンセル失敗: エラー=", cancel_error);
+         }
+         else if(cancel_res.retcode != TRADE_RETCODE_DONE)
+         {
+            Print("⚠️ [HandlePlace] BuyStopキャンセル失敗: retcode=", cancel_res.retcode);
+         }
+         else
+         {
+            Print("✅ [HandlePlace] BuyStop#", result_buy.order, " ロールバック成功");
+         }
+         
+         data.SetExecResult(EXEC_RESULT_REJECTED, error_msg, tick_id);
+         Print("❌ [HandlePlace] ", error_msg);
+         return false;
+      }
+      
+      if(result_sell.retcode != TRADE_RETCODE_DONE && result_sell.retcode != TRADE_RETCODE_PLACED)
+      {
+         string error_msg = StringFormat("SellStop配置失敗: retcode=%d, %s", 
+                                        result_sell.retcode, result_sell.comment);
+         // BuyStopをキャンセル（ロールバック）
+         MqlTradeRequest cancel_req = {};
+         MqlTradeResult cancel_res = {};
+         cancel_req.action = TRADE_ACTION_REMOVE;
+         cancel_req.order = result_buy.order;
+         
+         if(!OrderSend(cancel_req, cancel_res))
+         {
+            int cancel_error = GetLastError();
+            Print("⚠️ [HandlePlace] BuyStopキャンセル失敗: エラー=", cancel_error);
+         }
+         else if(cancel_res.retcode != TRADE_RETCODE_DONE)
+         {
+            Print("⚠️ [HandlePlace] BuyStopキャンセル失敗: retcode=", cancel_res.retcode);
+         }
+         else
+         {
+            Print("✅ [HandlePlace] BuyStop#", result_buy.order, " ロールバック成功");
+         }
+         
+         data.SetExecResult(EXEC_RESULT_REJECTED, error_msg, tick_id);
+         Print("❌ [HandlePlace] ", error_msg);
+         return false;
+      }
+      
+      Print("✅ [HandlePlace] SellStop発注成功: チケット=", result_sell.order, 
+            " 価格=", sell_price);
+      
+      // ========== 成功: CLA_Dataに保存 ==========
+      data.SetOCOBuyTicket(result_buy.order);
+      data.SetOCOSellTicket(result_sell.order);
+      data.SetOCOBuyPrice(buy_price);
+      data.SetOCOSellPrice(sell_price);
+      
+      string success_msg = StringFormat("OCO配置成功: Buy#%llu@%.5f / Sell#%llu@%.5f",
+                                       result_buy.order, buy_price,
+                                       result_sell.order, sell_price);
+      data.SetExecResult(EXEC_RESULT_SUCCESS, success_msg, tick_id);
+      Print("✅ [HandlePlace] ", success_msg);
+      
+      return true;
+   }
+   
+   //-------------------------------------------------------------------
+   //| 注文修正処理（OCO価格更新）                                        |
+   //-------------------------------------------------------------------
+   bool HandleModify(CLA_Data &data, ulong tick_id)
+   {
+      // ========== OCOチケット・価格取得 ==========
+      ulong buy_ticket  = data.GetOCOBuyTicket();
+      ulong sell_ticket = data.GetOCOSellTicket();
+      double new_buy_price  = data.GetOCOBuyPrice();
+      double new_sell_price = data.GetOCOSellPrice();
+      
+      if(buy_ticket == 0 && sell_ticket == 0)
+      {
+         data.SetExecResult(EXEC_RESULT_REJECTED, "MODIFY対象の注文なし", tick_id);
+         Print("⚠️ [HandleModify] MODIFY対象なし");
+         return false;
+      }
+      
+      bool modified = false;
+      int modify_count = 0;
+      
+      // ========== BuyStop MODIFY ==========
+      if(buy_ticket > 0)
+      {
+         MqlTradeRequest request = {};
+         MqlTradeResult result = {};
+         
+         request.action = TRADE_ACTION_MODIFY;
+         request.order = buy_ticket;
+         request.price = new_buy_price;
+         
+         if(!OrderSend(request, result))
+         {
+            int error_code = GetLastError();
+            Print("❌ [HandleModify] BuyStop#", buy_ticket, " MODIFY失敗: エラー=", error_code);
+         }
+         else if(result.retcode == TRADE_RETCODE_DONE)
+         {
+            Print("✅ [HandleModify] BuyStop#", buy_ticket, " MODIFY成功: 新価格=", new_buy_price);
+            modified = true;
+            modify_count++;
+         }
+         else
+         {
+            Print("❌ [HandleModify] BuyStop#", buy_ticket, " MODIFY失敗: retcode=", result.retcode);
+         }
+      }
+      
+      // ========== SellStop MODIFY ==========
+      if(sell_ticket > 0)
+      {
+         MqlTradeRequest request = {};
+         MqlTradeResult result = {};
+         
+         request.action = TRADE_ACTION_MODIFY;
+         request.order = sell_ticket;
+         request.price = new_sell_price;
+         
+         if(!OrderSend(request, result))
+         {
+            int error_code = GetLastError();
+            Print("❌ [HandleModify] SellStop#", sell_ticket, " MODIFY失敗: エラー=", error_code);
+         }
+         else if(result.retcode == TRADE_RETCODE_DONE)
+         {
+            Print("✅ [HandleModify] SellStop#", sell_ticket, " MODIFY成功: 新価格=", new_sell_price);
+            modified = true;
+            modify_count++;
+         }
+         else
+         {
+            Print("❌ [HandleModify] SellStop#", sell_ticket, " MODIFY失敗: retcode=", result.retcode);
+         }
+      }
+      
+      // ========== 結果記録 ==========
+      if(modified)
+      {
+         string msg = StringFormat("OCO追従更新成功: %d件", modify_count);
+         data.SetExecResult(EXEC_RESULT_SUCCESS, msg, tick_id);
+         Print("✅ [HandleModify] ", msg);
          return true;
       }
-      // パターン2: 失敗（奇数）
       else
       {
-         data.SetExecResult(EXEC_RESULT_REJECTED, 
-                           StringFormat("注文失敗（ダミー）TickID=%llu", tick_id), tick_id);
+         data.SetExecResult(EXEC_RESULT_REJECTED, "追従更新失敗", tick_id);
+         Print("❌ [HandleModify] 追従更新失敗");
          return false;
       }
    }
    
    //-------------------------------------------------------------------
-   //| 注文修正処理（ダミー実装）                                         |
-   //-------------------------------------------------------------------
-   bool HandleModify(CLA_Data &data, ulong tick_id)
-   {
-      data.SetExecResult(EXEC_RESULT_SUCCESS, "MODIFY処理（ダミー）", tick_id);
-      return true;
-   }
-   
-   //-------------------------------------------------------------------
-   //| 注文取消処理（ダミー実装）                                         |
+   //| 注文取消処理（反対側注文のキャンセル）                             |
    //-------------------------------------------------------------------
    bool HandleCancel(CLA_Data &data, ulong tick_id)
    {
-      data.SetExecResult(EXEC_RESULT_SUCCESS, "CANCEL処理（ダミー）", tick_id);
-      return true;
+      // ========== キャンセル対象の判定 ==========
+      ulong buy_ticket = data.GetOCOBuyTicket();
+      ulong sell_ticket = data.GetOCOSellTicket();
+      
+      if(buy_ticket == 0 && sell_ticket == 0)
+      {
+         data.SetExecResult(EXEC_RESULT_REJECTED, "キャンセル対象の注文なし", tick_id);
+         Print("⚠️ [HandleCancel] キャンセル対象なし");
+         return false;
+      }
+      
+      bool success = true;
+      int cancel_count = 0;
+      
+      // ========== BuyStop キャンセル ==========
+      if(buy_ticket > 0)
+      {
+         MqlTradeRequest request = {};
+         MqlTradeResult result = {};
+         
+         request.action = TRADE_ACTION_REMOVE;
+         request.order = buy_ticket;
+         
+         if(OrderSend(request, result))
+         {
+            if(result.retcode == TRADE_RETCODE_DONE)
+            {
+               Print("✅ [HandleCancel] BuyStop#", buy_ticket, " キャンセル成功");
+               data.SetOCOBuyTicket(0);
+               cancel_count++;
+            }
+            else
+            {
+               Print("❌ [HandleCancel] BuyStop#", buy_ticket, " キャンセル失敗: retcode=", result.retcode);
+               success = false;
+            }
+         }
+         else
+         {
+            Print("❌ [HandleCancel] BuyStop#", buy_ticket, " OrderSend失敗: エラー=", GetLastError());
+            success = false;
+         }
+      }
+      
+      // ========== SellStop キャンセル ==========
+      if(sell_ticket > 0)
+      {
+         MqlTradeRequest request = {};
+         MqlTradeResult result = {};
+         
+         request.action = TRADE_ACTION_REMOVE;
+         request.order = sell_ticket;
+         
+         if(OrderSend(request, result))
+         {
+            if(result.retcode == TRADE_RETCODE_DONE)
+            {
+               Print("✅ [HandleCancel] SellStop#", sell_ticket, " キャンセル成功");
+               data.SetOCOSellTicket(0);
+               cancel_count++;
+            }
+            else
+            {
+               Print("❌ [HandleCancel] SellStop#", sell_ticket, " キャンセル失敗: retcode=", result.retcode);
+               success = false;
+            }
+         }
+         else
+         {
+            Print("❌ [HandleCancel] SellStop#", sell_ticket, " OrderSend失敗: エラー=", GetLastError());
+            success = false;
+         }
+      }
+      
+      // ========== 結果記録 ==========
+      if(success && cancel_count > 0)
+      {
+         string msg = StringFormat("注文キャンセル成功: %d件", cancel_count);
+         data.SetExecResult(EXEC_RESULT_SUCCESS, msg, tick_id);
+         Print("✅ [HandleCancel] ", msg);
+         return true;
+      }
+      else
+      {
+         string msg = StringFormat("注文キャンセル失敗: 成功%d件", cancel_count);
+         data.SetExecResult(EXEC_RESULT_REJECTED, msg, tick_id);
+         Print("❌ [HandleCancel] ", msg);
+         return false;
+      }
    }
    
    //-------------------------------------------------------------------
-   //| ポジション決済処理（ダミー実装）                                   |
+   //| ポジション決済処理                                                 |
    //-------------------------------------------------------------------
    bool HandleClose(CLA_Data &data, ulong tick_id)
    {
-      data.SetExecResult(EXEC_RESULT_SUCCESS, "CLOSE処理（ダミー）", tick_id);
+      // ========== 現在のポジション検索 ==========
+      int magic = data.GetOCOMagic();
+      int total = PositionsTotal();
+      bool found = false;
+      ulong position_ticket = 0;
+      
+      for(int i = 0; i < total; i++)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+         
+         if(PositionGetString(POSITION_SYMBOL) != Symbol()) continue;
+         if(PositionGetInteger(POSITION_MAGIC) != magic) continue;
+         
+         position_ticket = ticket;
+         found = true;
+         break;
+      }
+      
+      if(!found)
+      {
+         data.SetExecResult(EXEC_RESULT_REJECTED, "決済対象のポジションなし", tick_id);
+         Print("⚠️ [HandleClose] 決済対象なし");
+         return false;
+      }
+      
+      // ========== ポジション決済 ==========
+      MqlTradeRequest request = {};
+      MqlTradeResult result = {};
+      
+      request.action = TRADE_ACTION_DEAL;
+      request.position = position_ticket;
+      request.symbol = Symbol();
+      request.volume = PositionGetDouble(POSITION_VOLUME);
+      request.deviation = m_slippage;
+      request.magic = magic;
+      request.comment = "Aegis_Close";
+      
+      // 決済方向の判定
+      ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      if(pos_type == POSITION_TYPE_BUY)
+      {
+         request.type = ORDER_TYPE_SELL;
+         request.price = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+      }
+      else
+      {
+         request.type = ORDER_TYPE_BUY;
+         request.price = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+      }
+      
+      if(!OrderSend(request, result))
+      {
+         string error_msg = StringFormat("決済失敗: エラーコード=%d, %s", 
+                                        GetLastError(), result.comment);
+         data.SetExecResult(EXEC_RESULT_REJECTED, error_msg, tick_id);
+         Print("❌ [HandleClose] ", error_msg);
+         return false;
+      }
+      
+      if(result.retcode != TRADE_RETCODE_DONE)
+      {
+         string error_msg = StringFormat("決済失敗: retcode=%d, %s", 
+                                        result.retcode, result.comment);
+         data.SetExecResult(EXEC_RESULT_REJECTED, error_msg, tick_id);
+         Print("❌ [HandleClose] ", error_msg);
+         return false;
+      }
+      
+      string success_msg = StringFormat("ポジション決済成功: #%llu", position_ticket);
+      data.SetExecResult(EXEC_RESULT_SUCCESS, success_msg, tick_id);
+      Print("✅ [HandleClose] ", success_msg);
+      
       return true;
    }
 };

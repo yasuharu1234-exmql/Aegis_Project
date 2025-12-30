@@ -53,6 +53,8 @@ input bool   InpEnableConsoleLog = false;
 #include <CLA/03_Decision/CDecisionRSI_Simple.mqh>
 #include <CLA/04_Execution/CExecutionBase.mqh>
 #include <CLA/04_Execution/CExecutionManager.mqh>  // ★Phase 2追加
+#include <CLA/05_Strategy/CStrategy_OCOFollow.mqh> // ★Sprint D追加
+#include <CLA/05_Strategy/CStrategyManager.mqh>     // ★Sprint E追加
 
 //+------------------------------------------------------------------+
 //| グローバルインスタンス                                            |
@@ -62,6 +64,8 @@ CObservationPrice     g_observer_price;
 CObservationRSI       g_observer_rsi(14);
 CDecisionRSI_Simple   g_decision_rsi(&g_observer_rsi, 30.0, 70.0);
 CExecutionBase        g_execution(InpMagicNumber, InpSlippage);        // 既存（温存）
+CStrategy_OCOFollow   g_strategy_oco(100.0, 0.01, 0.0, 0.0, InpMagicNumber); // ★Sprint D追加
+CStrategyManager      g_strategy_manager;                                // ★Sprint E追加
 CExecutionManager     g_exec_manager(InpMagicNumber, InpSlippage);     // ★Phase 2追加
 
 //+------------------------------------------------------------------+
@@ -107,6 +111,16 @@ int AegisInit()
       return INIT_FAILED;
    }
    
+   // ========== OCO戦略初期化（Sprint D追加） ==========
+   if(!g_strategy_oco.Init())
+   {
+      Print("[エラー] OCO戦略初期化失敗");
+      return INIT_FAILED;
+   }
+   
+   // ========== StrategyManager初期化（Sprint E追加） ==========
+   g_strategy_manager.Init(g_strategy_oco);
+   
    // ========== 実行層初期化（既存） ==========
    if(!g_execution.Init())
    {
@@ -134,6 +148,7 @@ void AegisDeinit(const int reason)
 {
    Print("[終了] Aegis Hybrid EA");
    
+   g_strategy_oco.Deinit();  // ★Sprint D追加
    g_exec_manager.Deinit();  // ★Phase 2追加
    g_execution.Deinit();
    g_decision_rsi.Deinit();
@@ -170,19 +185,17 @@ void AegisTick()
    // ========================================
    // Layer 3: 判断
    // ========================================
-   g_decision_rsi.Update(g_data, tick_id);
-   SignalData signal = g_decision_rsi.GetLastSignal();
+   // g_decision_rsi.Update(g_data, tick_id);  // ★Sprint D: RSI戦略は一旦無効化
+   // SignalData signal = g_decision_rsi.GetLastSignal();
+   
+   // ★Sprint E追加: StrategyManager経由で実行
+   g_strategy_manager.Update(g_data, tick_id);
    
    // ========================================
-   // Layer 4: 実行（Phase 2 ダミーテスト）
+   // Layer 4: 実行
    // ========================================
    
-   // ★Phase 2追加: ダミー要求設定（10Tick毎にPLACE要求）
-   if((tick_id % 10) == 0)
-   {
-      g_data.SetExecRequest(EXEC_REQ_PLACE, tick_id);
-      Print("[テスト] ダミーPLACE要求を設定");
-   }
+   // ★Sprint D追加: ExecutionManager実行
    
    // ★Phase 2追加: ExecutionManager実行
    if(!g_exec_manager.Execute(g_data, tick_id))
@@ -205,8 +218,10 @@ void AegisTick()
    }
    
    // ========================================
-   // 既存のエントリーロジック（温存）
+   // 既存のエントリーロジック（Sprint D: 無効化）
    // ========================================
+   // ★Sprint D: OCO戦略を使用するため、RSI連動ロジックは無効化
+   /*
    if(signal.signal_type == SIGNAL_BUY)
    {
       if(g_execution.GetPositionCount() == 0)
@@ -221,4 +236,5 @@ void AegisTick()
          g_execution.EntrySell(InpLots, InpSL, InpTP);
       }
    }
+   */
 }
