@@ -32,7 +32,11 @@
 
 #include "CLA_Common.mqh"
 #include "CFileLogger.mqh"
-
+#define LOG_LEVEL_DEBUG     1
+#define LOG_LEVEL_INFO      2
+#define LOG_LEVEL_WARN      3
+#define LOG_LEVEL_ERROR     4
+#define LOG_LEVEL_PANIC     5
 //+------------------------------------------------------------------+
 //| グローバルデータ管理クラス                                         |
 //| 役割：全レイヤー間でのデータ共有、ログ管理                          |
@@ -179,7 +183,7 @@ public:
       
       if(important)
       {
-         m_logger.WriteLog(func_id, tick_id, message, level);
+         m_logger.Log(FUNC_ID_CLA_DATA, LOG_LEVEL_DEBUG);
       }
       
       if(m_console_log_enabled)
@@ -193,13 +197,13 @@ public:
    //+------------------------------------------------------------------+
    void FlushAllLogs()
    {
-      for(int i = 0; i < m_log_buffer_count; i++)
-      {
-         m_logger.WriteLog(FUNC_ID_CLA_DATA, i, m_log_buffer[i], "DEBUG");
-      }
-      
+//      for(int i = 0; i < m_log_buffer_count; i++)
+//      {
+//         m_logger.WriteLog(FUNC_ID_CLA_DATA, i, m_log_buffer[i], "DEBUG");
+//      }
+//      
       string flush_msg = StringFormat("全ログ出力完了: %d件", m_log_buffer_count);
-      m_logger.WriteLog(FUNC_ID_CLA_DATA, 0, flush_msg, "IMPORTANT");
+//      m_logger.WriteLog(FUNC_ID_CLA_DATA, 0, flush_msg, "IMPORTANT");
       
       if(m_console_log_enabled)
       {

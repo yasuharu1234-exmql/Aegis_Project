@@ -1,49 +1,59 @@
 ﻿//+------------------------------------------------------------------+
-//|                                              CFileLogger.mqh     |
-//|                                  Copyright 2025, Aegis Project   |
-//|                          https://github.com/YasuharuEA/Aegis     |
+//| File    : CFileLogger.mqh                                        |
+//| Project : Aegis Hybrid EA                                       |
+//| Layer   : Execution (Logger Implementation)                     |
+//|                                                                  |
+//| Purpose                                                          |
+//|  Phase 1: 最小実装のファイルロガー                               |
+//|  - Panic()だけは本気実装                                         |
+//|  - Log()は仮実装（Printでも可）                                  |
+//|  - 将来の本実装への差し替え前提                                  |
+//|                                                                  |
+//| Design Policy                                                    |
+//|  - これは「足場」である                                          |
+//|  - 美しくなくていい                                              |
+//|  - 壊れなければいい                                              |
+//|  - 将来削除・拡張できる                                          |
+//|                                                                  |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
-#property link        "https://github.com/YasuharuEA/Aegis"
 #property strict
 
+#ifndef CFILELOGGER_MQH
+#define CFILELOGGER_MQH
+
+#include "ILogger.mqh"
+#include "../00_Common/CLA_Common.mqh"
+
 //+------------------------------------------------------------------+
-//| ファイルロガークラス（UTF-8 BOM付き版）                            |
-//|                                                                  |
-//| [概要]                                                            |
-//|   ログメッセージをUTF-8（BOM付き）CSVファイルに書き込む。           |
-//|   日次でファイルを分割し、確実にディスクに保存する。                  |
-//|                                                                  |
-//| [設計思想]                                                         |
-//|   - 信頼性優先：都度オープン・クローズでデータ損失を防ぐ              |
-//|   - AI親和性：UTF-8でClaude/Geminiが直接読める                     |
-//|   - 可読性：CSV形式、BOM付きでExcelも対応                          |
-//|   - 保守性：日次分割で巨大ファイル化を防ぐ                           |
-//|   - MT4/MT5両対応：標準ファイル関数を使用                           |
-//|                                                                  |
-//| [ファイル形式]                                                     |
-//|   日時,TickID,機能ID,ログレベル,メッセージ                          |
-//|   2025.12.20 09:15:30,12345,FUNC_ID_PRICE_OBSERVER,INFO,価格更新  |
+//| ファイルロガー実装（Phase 1）                                     |
 //+------------------------------------------------------------------+
-class CFileLogger
+class CFileLogger : public ILogger
 {
 private:
-   //--- メンバ変数
-   string m_base_folder;      // ベースフォルダ（"Aegis\\Logs\\"）
-   string m_current_date;     // 現在の日付（yyyyMMdd）
-   bool   m_initialized;      // 初期化済みフラグ
-   bool   m_header_written;   // ヘッダー書き込み済みフラグ
+   // ========== 基本状態 ==========
+   bool     m_enabled;           // 有効フラグ
+   int      m_count;             // ログ件数
+   int      m_max_records;       // 最大件数
    
+   // ========== ファイル管理 ==========
+   string   m_panic_file;        // Panicログファイル名
+   
+   // ========== 統計 ==========
+   int      m_panic_count;       // Panic発生回数
+
 public:
    //-------------------------------------------------------------------
    //| コンストラクタ                                                     |
    //-------------------------------------------------------------------
    CFileLogger()
    {
-      m_base_folder = "Aegis\\Logs\\";
-      m_current_date = "";
-      m_initialized = false;
-      m_header_written = false;
+      m_enabled = false;
+      m_count = 0;
+      m_max_records = 10000;
+      m_panic_count = 0;
+      m_panic_file = "";
    }
    
    //-------------------------------------------------------------------
@@ -51,157 +61,155 @@ public:
    //-------------------------------------------------------------------
    ~CFileLogger()
    {
-      // 都度クローズのため特に処理なし
+      if(m_enabled)
+      {
+         Flush();
+      }
    }
    
    //-------------------------------------------------------------------
-   //| 初期化メソッド                                                     |
+   //| 初期化                                                             |
    //-------------------------------------------------------------------
-   bool Init()
+   bool Init(int max_records = 10000)
    {
-      // フォルダ作成（存在しなければ作成）
-      if(!CreateDirectory())
-      {
-         Print("[FileLogger] エラー: ログディレクトリの作成に失敗しました");
-         return false;
-      }
+      m_max_records = max_records;
+      m_count = 0;
+      m_panic_count = 0;
       
-      m_initialized = true;
-      Print("[FileLogger] 初期化成功 (保存先: ", m_base_folder, ", エンコーディング: UTF-8 BOM)");
+      // Panicファイル名生成
+      datetime now = TimeCurrent();
+      string date_str = TimeToString(now, TIME_DATE | TIME_MINUTES | TIME_SECONDS);
+      StringReplace(date_str, ":", "");
+      StringReplace(date_str, " ", "_");
+      StringReplace(date_str, ".", "");
+      
+      m_panic_file = "aegis_panic_" + date_str + ".log";
+      
+      m_enabled = true;
+      
+      Print("[Logger] Phase 1 初期化完了: 最大件数=", m_max_records);
+      
       return true;
    }
    
    //-------------------------------------------------------------------
-   //| ログ書き込みメソッド                                                |
-   //| [引数]                                                            |
-   //|   func_id : 機能ID                                               |
-   //|   tick_id : TickユニークID                                       |
-   //|   message : ログメッセージ                                         |
-   //|   level   : ログレベル（デフォルト="INFO"）                         |
+   //| 通常ログ（Phase 1: 仮実装）                                        |
    //-------------------------------------------------------------------
-   bool WriteLog(ENUM_FUNCTION_ID func_id, ulong tick_id, string message, string level = "INFO")
+   virtual void Log(int log_id,
+                    uchar level,
+                    int p1 = 0,
+                    int p2 = 0) override
    {
-      if(!m_initialized)
+      if(!m_enabled)
+         return;
+      
+      // Phase 1: Printで代用（将来は配列に保存）
+      // Print("[Log] ID=", log_id, " Level=", level, " P1=", p1, " P2=", p2);
+      
+      // 件数のみカウント
+      m_count++;
+      
+      // 最大件数到達時の処理（Phase 1では何もしない）
+      if(m_count >= m_max_records)
       {
-         Print("[FileLogger] エラー: 初期化されていません");
-         return false;
+         // 将来: リングバッファなど
       }
-      
-      // 日付が変わったかチェック
-      string today = GetTodayString();
-      if(today != m_current_date)
-      {
-         m_current_date = today;
-         m_header_written = false; // 新しいファイルなのでヘッダー未書き込み
-      }
-      
-      // ファイル名生成
-      string filename = m_base_folder + "Aegis_Log_" + m_current_date + ".csv";
-      
-      // ファイルを開く（UTF-8 BOM付き）
-      // FILE_UNICODE = UTF-16LE（内部）→ UTF-8 BOM（ファイル）に自動変換
-      // FILE_COMMON = 共通フォルダに保存（全ターミナルで共有）
-      int handle = FileOpen(filename, FILE_WRITE | FILE_READ | FILE_CSV | FILE_UNICODE | FILE_COMMON, ',');
-      
-      if(handle == INVALID_HANDLE)
-      {
-         int error = GetLastError();
-         PrintFormat("[FileLogger] エラー: ファイルオープン失敗 (%s), Error: %d", 
-            filename, error);
-         PrintFormat("[FileLogger] デバッグ: 保存先フルパス確認 = MQL4/Files/%s または MQL5/Files/%s", 
-            filename, filename);
-         return false;
-      }
-      else
-      {
-         // 初回のみ成功メッセージ（毎回は出さない）
-         static bool first_write = true;
-         if(first_write)
-         {
-            PrintFormat("[FileLogger] ✅ ファイルオープン成功: %s", filename);
-            first_write = false;
-         }
-      }
-      
-      // ファイルの末尾に移動
-      FileSeek(handle, 0, SEEK_END);
-      
-      // ヘッダー書き込み（ファイルが空の場合）
-      if(FileSize(handle) == 0 || !m_header_written)
-      {
-         FileWrite(handle, "日時", "TickID", "機能ID", "ログレベル", "メッセージ");
-         m_header_written = true;
-      }
-      
-      // ログレコード書き込み
-      string datetime_str = TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS);
-      string func_id_str = EnumToString(func_id);
-      
-      // CSVエスケープ処理（カンマやダブルクォートを含む場合）
-      string escaped_message = EscapeCSV(message);
-      
-      FileWrite(handle, datetime_str, IntegerToString(tick_id), func_id_str, level, escaped_message);
-      
-      // ファイルを閉じる（即座にフラッシュ）
-      FileClose(handle);
-      
-      return true;
    }
+   
+   //-------------------------------------------------------------------
+   //| Panicログ（Phase 1: 本気実装）                                     |
+   //-------------------------------------------------------------------
+   virtual void Panic(int panic_id,
+                      const string &message) override
+   {
+      m_panic_count++;
+      
+      // ========== 即座にPrint出力 ==========
+      string panic_type = GetPanicTypeName(panic_id);
+      Print("═══════════════════════════════════════");
+      Print("[PANIC][", panic_id, "] ", panic_type);
+      Print("Message: ", message);
+      Print("Time: ", TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS));
+      Print("Count: ", m_panic_count);
+      Print("═══════════════════════════════════════");
+      
+      // ========== ファイルに記録 ==========
+      WritePanicToFile(panic_id, message);
+      
+      // ========== 即Flush ==========
+      Flush();
+   }
+   
+   //-------------------------------------------------------------------
+   //| Flush（Phase 1: 仮実装）                                           |
+   //-------------------------------------------------------------------
+   virtual void Flush() override
+   {
+      if(!m_enabled)
+         return;
+      
+      // Phase 1: Printで代用
+      Print("[Logger] Flush呼び出し: 件数=", m_count);
+      
+      // 将来: CSV書き込みなど
+   }
+   
+   //-------------------------------------------------------------------
+   //| 統計取得                                                           |
+   //-------------------------------------------------------------------
+   int GetLogCount() const { return m_count; }
+   int GetPanicCount() const { return m_panic_count; }
    
 private:
    //-------------------------------------------------------------------
-   //| ディレクトリ作成                                                   |
+   //| Panicタイプ名取得                                                  |
    //-------------------------------------------------------------------
-   bool CreateDirectory()
+   string GetPanicTypeName(int panic_id)
    {
-      // "Aegis" フォルダ作成
-      FolderCreate("Aegis", FILE_COMMON);
-      
-      // "Aegis\\Logs" フォルダ作成
-      FolderCreate("Aegis\\Logs", FILE_COMMON);
-      
-      // エラーチェックは省略（既存フォルダでもエラーになるため）
-      ResetLastError();
-      
-      return true;
-   }
-   
-   //-------------------------------------------------------------------
-   //| 今日の日付を"yyyyMMdd"形式で取得                                   |
-   //-------------------------------------------------------------------
-   string GetTodayString()
-   {
-      MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
-      
-      return StringFormat("%04d%02d%02d", dt.year, dt.mon, dt.day);
-   }
-   
-   //-------------------------------------------------------------------
-   //| CSVエスケープ処理                                                  |
-   //| [引数]                                                            |
-   //|   text : エスケープ対象のテキスト                                   |
-   //| [戻り値]                                                          |
-   //|   エスケープ済みテキスト                                            |
-   //-------------------------------------------------------------------
-   string EscapeCSV(string text)
-   {
-      // カンマ、ダブルクォート、改行を含む場合はダブルクォートで囲む
-      if(StringFind(text, ",") >= 0 || 
-         StringFind(text, "\"") >= 0 || 
-         StringFind(text, "\n") >= 0)
+      switch(panic_id)
       {
-         // ダブルクォートを2つにエスケープ
-         StringReplace(text, "\"", "\"\"");
-         
-         // 全体をダブルクォートで囲む
-         text = "\"" + text + "\"";
+         case PANIC_UNKNOWN:              return "UNKNOWN";
+         case PANIC_MEMORY_CORRUPTION:    return "MEMORY_CORRUPTION";
+         case PANIC_ORDER_STATE_BROKEN:   return "ORDER_STATE_BROKEN";
+         case PANIC_EXECUTION_INCONSIST:  return "EXECUTION_INCONSIST";
+         case PANIC_LOGGER_FAILURE:       return "LOGGER_FAILURE";
+         case PANIC_INTERNAL_ASSERT:      return "INTERNAL_ASSERT";
+         case PANIC_MANUAL_TRIGGER:       return "MANUAL_TRIGGER";
+         default:                         return "UNDEFINED";
+      }
+   }
+   
+   //-------------------------------------------------------------------
+   //| Panicをファイルに記録                                              |
+   //-------------------------------------------------------------------
+   void WritePanicToFile(int panic_id, const string &message)
+   {
+      // ファイルオープン（追記モード）
+      int handle = FileOpen(m_panic_file, FILE_WRITE | FILE_READ | FILE_TXT | FILE_COMMON);
+      
+      if(handle == INVALID_HANDLE)
+      {
+         Print("[Logger] Panicファイルオープン失敗: ", m_panic_file, " エラー=", GetLastError());
+         return;
       }
       
-      return text;
+      // 末尾に移動
+      FileSeek(handle, 0, SEEK_END);
+      
+      // 記録
+      string time_str = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
+      string panic_type = GetPanicTypeName(panic_id);
+      
+      FileWrite(handle, "═══════════════════════════════════════");
+      FileWrite(handle, "[PANIC][" + IntegerToString(panic_id) + "] " + panic_type);
+      FileWrite(handle, "Time: " + time_str);
+      FileWrite(handle, "Message: " + message);
+      FileWrite(handle, "Count: " + IntegerToString(m_panic_count));
+      FileWrite(handle, "═══════════════════════════════════════");
+      FileWrite(handle, "");
+      
+      FileClose(handle);
    }
 };
 
-//+------------------------------------------------------------------+
-//| End of CFileLogger.mqh                                           |
-//+------------------------------------------------------------------+
+#endif // CFILELOGGER_MQH

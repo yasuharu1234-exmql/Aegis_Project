@@ -211,6 +211,22 @@ struct SignalData
    }
 };
 
+
+//+------------------------------------------------------------------+
+//| Panic ログ ID（Phase 1 - Logger）                                |
+//| なりふり構わない緊急ログ用                                        |
+//+------------------------------------------------------------------+
+enum ENUM_PANIC_LOG_ID
+{
+   PANIC_UNKNOWN              = 9000,  // 原因不明の異常
+   PANIC_MEMORY_CORRUPTION    = 9001,  // メモリ破損検知
+   PANIC_ORDER_STATE_BROKEN   = 9002,  // 注文状態の不整合
+   PANIC_EXECUTION_INCONSIST  = 9003,  // 実行層の不整合
+   PANIC_LOGGER_FAILURE       = 9004,  // Logger自体の失敗
+   PANIC_INTERNAL_ASSERT      = 9005,  // 内部アサーション違反
+   PANIC_MANUAL_TRIGGER       = 9099   // 手動トリガー
+};
+
 //+------------------------------------------------------------------+
 //| Gatekeeper結果を人間が読める文字列に変換                          |
 //| 用途：ログ出力、MIA分析、デバッグ                                 |

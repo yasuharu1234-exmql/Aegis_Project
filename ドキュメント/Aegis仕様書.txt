@@ -439,3 +439,260 @@ include・enum・structは触るな
 5.発言者は私が指定します。それまでは待機です。
 
 ========================================
+Claude向け実装指示書
+========================================
+
+
+# 📘 Claude向け実装指示書
+
+## Aegis Logger Phase 1（ILogger + Panic）
+
+---
+
+## 🎯 ゴール（絶対）
+
+* **ログ設計を確定させない**
+* **仮enum回収作戦を前提に実装する**
+* **Aegis全体を止めずに、今すぐ組み込める Logger を作る**
+* **Panicログだけは「本気仕様」**
+
+---
+
+## 0. 実装範囲（厳守）
+
+### ✅ 実装するもの
+
+1. `ILogger` インターフェース
+2. `CFileLogger`（仮実装OK）
+3. `Panic()` ログ経路（最優先）
+4. 仮LOG_ID前提の通常ログ経路
+
+### ❌ 実装しないもの（今は不要）
+
+* CLA_Data の中身の編集
+* Snapshot / ダンプの本格実装
+* enum LOG_ID の完全定義
+* 高性能最適化
+
+---
+
+## 1. 仮enum回収作戦（必須ルール）
+
+### Claudeへの最重要ルール
+
+> **LOG_IDは確定させない。enumを作らない。**
+
+### 仮IDの扱い
+
+* 各ファイル先頭に `#define LOG_ID_xxx` を置く
+* enumっぽい名前にする
+* 数値は仮でよい
+* 後で回収される前提
+
+例：
+
+```mql
+// ===== TEMP LOG IDs (TO BE COLLECTED) =====
+#define LOG_ID_EXEC_PLACE    3001
+#define LOG_ID_EXEC_RESULT   3002
+```
+
+---
+
+## 2. ILogger インターフェース（確定）
+
+### ファイル
+
+```
+/CLA/04_Execution/ILogger.mqh
+```
+
+### 定義（このまま使う）
+
+```mql
+class ILogger
+{
+public:
+    // 通常ログ（IDベース・軽量）
+    virtual void Log(
+        int log_id,
+        uchar level,
+        int p1 = 0,
+        int p2 = 0
+    ) = 0;
+
+    // パニックログ（フリーフォーマット・最優先）
+    virtual void Panic(
+        int panic_id,
+        const string &message
+    ) = 0;
+
+    // 明示FLUSH要求
+    virtual void Flush() = 0;
+};
+```
+
+---
+
+## 3. Panicログ（最重要）
+
+### Panicログの思想（理解必須）
+
+* **なりふり構わない**
+* **文字列OK**
+* **Print()併用OK**
+* **即Flush**
+* **Verbose/Level無視OK**
+
+---
+
+### Panic ID（ここだけ確定）
+
+```mql
+enum ENUM_PANIC_LOG_ID
+{
+    PANIC_UNKNOWN              = 9000,
+    PANIC_MEMORY_CORRUPTION    = 9001,
+    PANIC_ORDER_STATE_BROKEN   = 9002,
+    PANIC_EXECUTION_INCONSIST  = 9003,
+    PANIC_LOGGER_FAILURE       = 9004,
+    PANIC_INTERNAL_ASSERT      = 9005,
+    PANIC_MANUAL_TRIGGER       = 9099
+};
+```
+
+※ この enum は **CLA_Common.mqh に追加してOK**
+
+---
+
+## 4. CFileLogger（Phase 1仕様）
+
+### ファイル
+
+```
+/CLA/04_Execution/CFileLogger.mqh
+```
+
+### 内部状態（最低限）
+
+```mql
+class CFileLogger : public ILogger
+{
+private:
+    int    m_count;          // ログ件数
+    int    m_max_records;    // 最大件数（inputで設定）
+    bool   m_enabled;
+
+public:
+    bool Init(int max_records);
+    void Log(int log_id, uchar level, int p1=0, int p2=0);
+    void Panic(int panic_id, const string &message);
+    void Flush();
+};
+```
+
+---
+
+### Phase 1での挙動（割り切り）
+
+#### Log()
+
+* メモリ配列に保存 **または**
+* 仮で `Print()` でもOK
+* **件数のみカウント**
+
+#### Panic()
+
+* `Print()` に即時出力（必須）
+* 内容：
+
+  ```
+  [PANIC][9003] Execution inconsistency detected
+  ```
+* 直後に `Flush()` を必ず呼ぶ
+
+#### Flush()
+
+* 今は `Print("[Logger] Flush called")` でOK
+* 後で本実装に差し替える前提
+
+---
+
+## 5. 最大ログ容量（件数ベース）
+
+### 方針
+
+* **容量は件数で管理**
+* テキストエディタの「行数」と一致する思想
+
+### Init例
+
+```mql
+input int InpMaxLogRecords = 10000;
+
+bool CFileLogger::Init(int max_records)
+{
+    m_max_records = max_records;
+    m_count = 0;
+    m_enabled = true;
+    return true;
+}
+```
+
+---
+
+## 6. 呼び出し側の使い方（例）
+
+```mql
+logger.Log(LOG_ID_EXEC_PLACE, 2, ticket, price_points);
+
+if(fatal)
+{
+    logger.Panic(
+        PANIC_EXECUTION_INCONSIST,
+        "Buy/Sell state mismatch detected"
+    );
+}
+```
+
+---
+
+## 7. 重要な割り切り（Claudeへ）
+
+* **ログの中身は後で変える**
+* **設計が実装に引っ張られるのはOK**
+* **今は「呼べること」が最優先**
+* **CLA_Dataは触らない**
+
+---
+
+## 8. 成功条件（Claude自己チェック）
+
+* [ ] enum LOG_ID を作っていない
+* [ ] #define 仮IDを使っている
+* [ ] Panicが文字列で出せる
+* [ ] Flushが呼べる
+* [ ] コンパイルが通る
+* [ ] 将来削除・拡張できる
+
+---
+
+## 🧠 ChatGPTからの補足（Claude向け）
+
+> これは完成品じゃない
+> これは「足場」だ
+> 足場は壊れなければいい
+> 美しくなくていい
+
+---
+
+次はどっち行く？
+
+* **A**：Claude実装が上がるのを待ってレビュー
+* **B**：同時に「致命的に不足しているログ」を洗い出す
+* **C**：Panic Snapshot の最小要件を決める
+
+判断は任せる。
+
+========================================
+
