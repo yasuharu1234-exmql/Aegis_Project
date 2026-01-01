@@ -32,11 +32,7 @@
 
 #include "CLA_Common.mqh"
 #include "CFileLogger.mqh"
-#define LOG_LEVEL_DEBUG     1
-#define LOG_LEVEL_INFO      2
-#define LOG_LEVEL_WARN      3
-#define LOG_LEVEL_ERROR     4
-#define LOG_LEVEL_PANIC     5
+
 //+------------------------------------------------------------------+
 //| グローバルデータ管理クラス                                         |
 //| 役割：全レイヤー間でのデータ共有、ログ管理                          |
@@ -87,6 +83,9 @@ private:
    double             m_oco_tp_points;         // TP（ポイント）
    int                m_oco_magic;             // マジックナンバー
    double             m_oco_distance_points;   // OCO配置距離（ポイント）
+   
+   // ========== 追従管理（Phase 4追加） ==========
+   datetime           m_last_order_action_time; // 前回注文配置または変更成功時刻
 public:
    //+------------------------------------------------------------------+
    //| コンストラクタ                                                    |
@@ -129,6 +128,9 @@ public:
       m_oco_tp_points = 0.0;
       m_oco_magic = 0;
       m_oco_distance_points = 0.0;
+      
+      // ★Phase 4: 追従管理初期化
+      m_last_order_action_time = 0;
    }
    
    //+------------------------------------------------------------------+
@@ -183,7 +185,7 @@ public:
       
       if(important)
       {
-         m_logger.Log(FUNC_ID_CLA_DATA, LOG_LEVEL_DEBUG);
+         m_logger.Log(func_id, LOG_LEVEL_INFO, 0, 0);
       }
       
       if(m_console_log_enabled)
@@ -197,13 +199,11 @@ public:
    //+------------------------------------------------------------------+
    void FlushAllLogs()
    {
-//      for(int i = 0; i < m_log_buffer_count; i++)
-//      {
-//         m_logger.WriteLog(FUNC_ID_CLA_DATA, i, m_log_buffer[i], "DEBUG");
-//      }
-//      
+      for(int i = 0; i < m_log_buffer_count; i++)
+      {
+      }
+      
       string flush_msg = StringFormat("全ログ出力完了: %d件", m_log_buffer_count);
-//      m_logger.WriteLog(FUNC_ID_CLA_DATA, 0, flush_msg, "IMPORTANT");
       
       if(m_console_log_enabled)
       {
@@ -438,6 +438,12 @@ public:
    //+------------------------------------------------------------------+
    void SetOCODistancePoints(double points) { m_oco_distance_points = points; }
    double GetOCODistancePoints() const { return m_oco_distance_points; }
+   
+   //+------------------------------------------------------------------+
+   //| 追従管理（Phase 4追加）                                            |
+   //+------------------------------------------------------------------+
+   void SetLastOrderActionTime(datetime time) { m_last_order_action_time = time; }
+   datetime GetLastOrderActionTime() const { return m_last_order_action_time; }
 };
 
 //+------------------------------------------------------------------+

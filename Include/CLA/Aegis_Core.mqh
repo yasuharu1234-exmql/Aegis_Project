@@ -33,14 +33,36 @@
 #property strict
 
 //+------------------------------------------------------------------+
-//| ユーザーパラメータ                                                |
+//| ユーザーパラメータ（Phase 2: 外部パラメータ化）                   |
 //+------------------------------------------------------------------+
-input int    InpMagicNumber = 123456;
+
+// ========== OCO配置設定 ==========
+input int    InpOCODistancePoints  = 50;      // OCO注文の価格間隔（ポイント）
+input double InpOCOLotSize         = 0.1;     // OCO注文のロットサイズ
+input int    InpOCOSLPoints        = 100;     // ストップロス（ポイント）
+input int    InpOCOTPPoints        = 200;     // テイクプロフィット（ポイント）
+
+// ========== 追従設定 ==========
+input int    InpTrailTriggerPoints      = 10;   // 追従開始トリガー（ポイント）
+input int    InpTrailIntervalSec        = 0;    // 追従判定間隔（秒、0=毎Tick）
+input int    InpMaxSpreadPoints         = 30;   // 最大許容スプレッド（ポイント）
+input int    InpSpreadWideIntervalSec   = 60;   // スプレッド拡大時の待機時間（秒）
+input bool   InpUseIntervalOHLC         = true; // 間隔モード時にOHLCを使用
+input int    InpMaxTrailCount           = 0;    // 最大追従回数（0=無制限）
+
+// ========== ログ設定 ==========
+input int    InpMaxLogRecords      = 2048;    // ログ最大記録件数
+input bool   InpEnableConsoleLog   = true;    // コンソールログ出力
+
+// ========== リスク管理 ==========
+input int    InpMaxPositions       = 1;       // 同時保有最大ポジション数
+input int    InpMagicNumber        = 20250101; // マジックナンバー
+
+// ========== 旧パラメータ（互換性のため残す） ==========
 input double InpLots = 0.01;
 input int    InpSlippage = 3;
 input double InpSL = 0.0;
 input double InpTP = 0.0;
-input bool   InpEnableConsoleLog = false;
 
 //+------------------------------------------------------------------+
 //| インクルード                                                     |
@@ -61,10 +83,10 @@ input bool   InpEnableConsoleLog = false;
 //+------------------------------------------------------------------+
 CGatekeeper           g_gatekeeper;
 CObservationPrice     g_observer_price;
-CObservationRSI       g_observer_rsi(14);
+CObservationRSI       g_observer_rsi;  // パラメータなし
 CDecisionRSI_Simple   g_decision_rsi(&g_observer_rsi, 30.0, 70.0);
 CExecutionBase        g_execution(InpMagicNumber, InpSlippage);        // 既存（温存）
-CStrategy_OCOFollow   g_strategy_oco(100.0, 0.01, 0.0, 0.0, InpMagicNumber); // ★Sprint D追加
+CStrategy_OCOFollow   g_strategy_oco;  // ★Phase 2: パラメータなし（Init()で設定）
 CStrategyManager      g_strategy_manager;                                // ★Sprint E追加
 CExecutionManager     g_exec_manager(InpMagicNumber, InpSlippage);     // ★Phase 2追加
 
@@ -111,8 +133,20 @@ int AegisInit()
       return INIT_FAILED;
    }
    
-   // ========== OCO戦略初期化（Sprint D追加） ==========
-   if(!g_strategy_oco.Init())
+   // ========== OCO戦略初期化（Phase 2: パラメータ付き） ==========
+   if(!g_strategy_oco.Init(
+      InpOCODistancePoints,
+      InpOCOLotSize,
+      InpOCOSLPoints,
+      InpOCOTPPoints,
+      InpTrailTriggerPoints,
+      InpTrailIntervalSec,
+      InpMaxSpreadPoints,
+      InpSpreadWideIntervalSec,
+      InpUseIntervalOHLC,
+      InpMaxTrailCount,
+      InpMagicNumber
+   ))
    {
       Print("[エラー] OCO戦略初期化失敗");
       return INIT_FAILED;
@@ -165,6 +199,12 @@ void AegisTick()
    static ulong tick_id = 0;
    tick_id++;
    
+   // ★Phase 5: デバッグログ（最初の10 Tickのみ）
+   if(tick_id <= 10)
+   {
+      Print("[DEBUG] Tick#", tick_id, " 開始");
+   }
+   
    // ========================================
    // Layer 1: Gatekeeper チェック
    // ========================================
@@ -173,7 +213,20 @@ void AegisTick()
    if(!g_gatekeeper.Execute(g_data, tick_id, gk_reason))
    {
       g_data.SetGatekeeperResult(gk_reason, tick_id);
+      
+      // ★Phase 5: Gatekeeper遮断時のデバッグログ（最初の10 Tickのみ）
+      if(tick_id <= 10)
+      {
+         Print("[DEBUG] Tick#", tick_id, " Gatekeeper遮断: ", EnumToString(gk_reason));
+      }
+      
       return;
+   }
+   
+   // ★Phase 5: デバッグログ（最初の10 Tickのみ）
+   if(tick_id <= 10)
+   {
+      Print("[DEBUG] Tick#", tick_id, " Gatekeeper通過");
    }
    
    // ========================================
@@ -190,6 +243,12 @@ void AegisTick()
    
    // ★Sprint E追加: StrategyManager経由で実行
    g_strategy_manager.Update(g_data, tick_id);
+   
+   // ★Phase 5: デバッグログ（最初の10 Tickのみ）
+   if(tick_id <= 10)
+   {
+      Print("[DEBUG] Tick#", tick_id, " Strategy完了");
+   }
    
    // ========================================
    // Layer 4: 実行
@@ -215,6 +274,12 @@ void AegisTick()
       #endif
       
       return;
+   }
+   
+   // ★Phase 5: デバッグログ（最初の10 Tickのみ）
+   if(tick_id <= 10)
+   {
+      Print("[DEBUG] Tick#", tick_id, " 完了");
    }
    
    // ========================================

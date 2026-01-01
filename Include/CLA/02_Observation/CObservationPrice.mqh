@@ -1,29 +1,33 @@
 ﻿//+------------------------------------------------------------------+
-//|                                      CObservationPrice.mqh       |
-//|                                  Copyright 2025, Aegis Project   |
-//|                          https://github.com/YasuharuEA/Aegis     |
+//| File    : CObservationPrice.mqh                                  |
+//| Project : Aegis Hybrid EA                                       |
+//| Layer   : Observation                                            |
+//|                                                                  |
+//| Role                                                             |
+//|  - 現在の市場価格（Ask/Bid）を観測する                           |
+//|  - スプレッドを計算する                                          |
+//|                                                                  |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
-#property link        "https://github.com/YasuharuEA/Aegis"
 #property strict
 
-//+------------------------------------------------------------------+
-//| インクルード                                                        |
-//+------------------------------------------------------------------+
+#include "../00_Common/CLA_Common.mqh"
+#include "../00_Common/CLA_Data.mqh"
 #include "CObservationBase.mqh"
-#include <EXMQL\EXMQL.mqh>
+#include "../../EXMQL/EXMQL.mqh"
 
 //+------------------------------------------------------------------+
-//| 価格観測クラス                                                      |
+//| Class   : CObservationPrice                                      |
+//| Layer   : Observation                                            |
 //+------------------------------------------------------------------+
 class CObservationPrice : public CObservationBase
 {
 private:
-   //--- メンバ変数
-   double m_last_ask;    // 前回のAsk価格
-   double m_last_bid;    // 前回のBid価格
-   double m_last_spread; // 前回のスプレッド（pips）
-   
+   double m_last_ask;
+   double m_last_bid;
+   double m_last_spread;
+
 public:
    //-------------------------------------------------------------------
    //| コンストラクタ                                                     |
@@ -33,14 +37,6 @@ public:
       m_last_ask = 0.0;
       m_last_bid = 0.0;
       m_last_spread = 0.0;
-   }
-   
-   //-------------------------------------------------------------------
-   //| デストラクタ                                                       |
-   //-------------------------------------------------------------------
-   ~CObservationPrice()
-   {
-      // 特に何もしない
    }
    
    //-------------------------------------------------------------------
@@ -55,7 +51,7 @@ public:
    }
    
    //-------------------------------------------------------------------
-   //| 終了処理メソッド                                                   |
+   //| 終了処理                                                           |
    //-------------------------------------------------------------------
    virtual void Deinit() override
    {
@@ -64,7 +60,7 @@ public:
    }
    
    //-------------------------------------------------------------------
-   //| 更新メソッド                                                       |
+   //| 更新メソッド（Phase 5: ログ削除）                                  |
    //-------------------------------------------------------------------
    virtual bool Update(CLA_Data &data, ulong tick_id) override
    {
@@ -79,12 +75,8 @@ public:
       double spread_points = (m_last_ask - m_last_bid) / point;
       m_last_spread = spread_points / 10.0; // pipsに変換
       
-      // ログ記録
-      string log_message = StringFormat(
-         "Ask: %.5f, Bid: %.5f, スプレッド: %.1f pips",
-         m_last_ask, m_last_bid, m_last_spread
-      );
-      data.AddLog(FUNC_ID_PRICE_OBSERVER, tick_id, log_message);
+      // ★Phase 5: 毎Tickログを削除
+      // data.AddLog(FUNC_ID_PRICE_OBSERVER, tick_id, log_message);
       
       return true;
    }
@@ -106,11 +98,10 @@ public:
    }
    
    //-------------------------------------------------------------------
-   //| 最後のスプレッドを取得（pips）                                      |
+   //| 最後のスプレッドを取得                                             |
    //-------------------------------------------------------------------
    double GetLastSpread() const
    {
       return m_last_spread;
    }
 };
-//+------------------------------------------------------------------+

@@ -1063,6 +1063,17 @@ public:
    MqlTechnicalIndicatorsHandle TIHandle[];
    int               HandleVolume;
 #endif
+
+   //----------------------------------------------------------------------
+   //| Aegis追加機能（Phase 1）                                           |
+   //----------------------------------------------------------------------
+   
+   // EA停止処理
+   void StopEA();
+   
+   // 致命的エラー判定
+   bool IsFatalError(int error_code);
+   
    //----------------------------------------------------------------------
    //↓↓↓↓↓↓↓↓↓↓↓↓経済指標関数↓↓↓↓↓↓↓↓↓↓↓
    //----------------------------------------------------------------------
@@ -4120,6 +4131,56 @@ void EXMQL::ExtractYearFromCache(int year, MqlCalendarValue &values[])
     }
 }
 
+//+------------------------------------------------------------------+
+//| Aegis追加機能の実装（Phase 1）                                    |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| EA停止処理                                                         |
+//| MT5: ExpertRemove()                                               |
+//| MT4: GlobalVariable経由で停止フラグ設定                           |
+//+------------------------------------------------------------------+
+void EXMQL::StopEA()
+{
+#ifdef __MQL5__
+   ExpertRemove();
+#else
+   // MT4: GlobalVariableで停止フラグを設定
+   GlobalVariableSet("Aegis_Stop", (double)TimeCurrent());
+   Print("[EXMQL] EA停止要求: Aegis_Stop フラグを設定しました");
+#endif
+}
+
+//+------------------------------------------------------------------+
+//| 致命的エラー判定                                                   |
+//| 戻り値: true=致命的エラー（EA停止すべき）                          |
+//|        false=一時的エラー（リトライ可能）                         |
+//+------------------------------------------------------------------+
+bool EXMQL::IsFatalError(int error_code)
+{
+   switch(error_code)
+   {
+      // ========== 口座関連 ==========
+      case 65:     // ERR_ACCOUNT_DISABLED (MT4)
+      case 10017:  // TRADE_RETCODE_ERROR (MT5)
+      
+      // ========== システム関連 ==========
+      case 4:      // ERR_NOT_ENOUGH_MEMORY
+      case 4013:   // ERR_INVALID_POINTER_TYPE
+      
+      // ========== 取引パラメータ関連 ==========
+      case 4051:   // ERR_INVALID_FUNCTION_PARAMVALUE
+      case 10014:  // TRADE_RETCODE_INVALID_FILL (MT5)
+      
+      // ========== シンボル関連 ==========
+      case 4106:   // ERR_UNKNOWN_SYMBOL
+      
+         return true;
+      
+      default:
+         return false;
+   }
+}
 
 
 

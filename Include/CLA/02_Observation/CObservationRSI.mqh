@@ -1,60 +1,47 @@
 ﻿//+------------------------------------------------------------------+
-//|                                           CObservationRSI.mqh    |
-//|                                  Copyright 2025, Aegis Project   |
-//|                          https://github.com/YasuharuEA/Aegis     |
+//| File    : CObservationRSI.mqh                                    |
+//| Project : Aegis Hybrid EA                                       |
+//| Layer   : Observation                                            |
+//|                                                                  |
+//| Role                                                             |
+//|  - RSI（相対力指数）を観測する                                   |
+//|  - 買われすぎ/売られすぎの判定を行う                              |
+//|                                                                  |
 //+------------------------------------------------------------------+
+
 #property copyright   "Copyright 2025, Aegis Project"
-#property link        "https://github.com/YasuharuEA/Aegis"
 #property strict
 
-//+------------------------------------------------------------------+
-//| インクルード                                                        |
-//+------------------------------------------------------------------+
+#include "../00_Common/CLA_Common.mqh"
+#include "../00_Common/CLA_Data.mqh"
 #include "CObservationBase.mqh"
-#include <EXMQL\EXMQL.mqh>
+#include "../../EXMQL/EXMQL.mqh"
 
 //+------------------------------------------------------------------+
-//| RSI観測クラス                                                      |
+//| Class   : CObservationRSI                                        |
+//| Layer   : Observation                                            |
 //+------------------------------------------------------------------+
 class CObservationRSI : public CObservationBase
 {
 private:
-   //--- メンバ変数
-   int    m_handle;      // RSIインジケーターのハンドル
-   int    m_period;      // RSI計算期間
-   double m_last_value;  // 前回のRSI値
-   
+   int m_handle;               // RSIインジケータハンドル
+   int m_period;               // RSI期間
+   double m_last_value;        // 最後のRSI値
+   double m_overbought_level;  // 買われすぎレベル
+   double m_oversold_level;    // 売られすぎレベル
+
 public:
    //-------------------------------------------------------------------
    //| コンストラクタ                                                     |
-   //| [引数]                                                            |
-   //|   period : RSI計算期間（デフォルト14）                              |
    //-------------------------------------------------------------------
-   CObservationRSI(int period = 14) : CObservationBase(FUNC_ID_TECHNICAL_RSI)
+   CObservationRSI() : CObservationBase(FUNC_ID_TECHNICAL_RSI)
    {
       m_handle = INVALID_HANDLE;
-      m_period = period;
-      m_last_value = 0.0;
+      m_period = 14;
+      m_last_value = 50.0;
+      m_overbought_level = 70.0;
+      m_oversold_level = 30.0;
    }
-   
-   //-------------------------------------------------------------------
-   //| デストラクタ                                                       |
-   //-------------------------------------------------------------------
-   ~CObservationRSI()
-   {
-      if(m_handle != INVALID_HANDLE)
-      {
-         exMQL.IndicatorRelease(m_handle);
-         m_handle = INVALID_HANDLE;
-      }
-   }
-
-   //===================================================================
-   // ▼▼▼ 定数の代わりにメソッドを使用 ▼▼▼
-   //===================================================================
-   double GetOverboughtLevel() const { return 70.0; } // 買われすぎ基準
-   double GetOversoldLevel()   const { return 30.0; } // 売られすぎ基準
-   //===================================================================
    
    //-------------------------------------------------------------------
    //| 初期化メソッド                                                     |
@@ -63,7 +50,7 @@ public:
    {
       if(!CObservationBase::Init()) return false;
       
-      // EXMQLを使ってRSIハンドルを作成
+      // RSIインジケータハンドル作成
       m_handle = exMQL.iRSI(_Symbol, PERIOD_CURRENT, m_period, PRICE_CLOSE);
       
       if(m_handle == INVALID_HANDLE)
@@ -90,7 +77,7 @@ public:
    }
    
    //-------------------------------------------------------------------
-   //| 更新メソッド                                                       |
+   //| 更新メソッド（Phase 5: ログ削除）                                  |
    //-------------------------------------------------------------------
    virtual bool Update(CLA_Data &data, ulong tick_id) override
    {
@@ -104,13 +91,15 @@ public:
       
       m_last_value = rsi_buffer[0];
       
-      //--- 判定ロジック（修正：メソッド呼び出しに変更）
+      // ★Phase 5: 毎Tickログを削除
+      // 判定ロジックは残すが、ログ出力は削除
+      /*
       string status = "";
-      if(m_last_value >= GetOverboughtLevel()) // ここを修正
+      if(m_last_value >= GetOverboughtLevel())
       {
          status = "[買われすぎゾーン]";
       }
-      else if(m_last_value <= GetOversoldLevel()) // ここを修正
+      else if(m_last_value <= GetOversoldLevel())
       {
          status = "[売られすぎゾーン]";
       }
@@ -121,6 +110,7 @@ public:
       
       string log_message = StringFormat("RSI(%d): %.1f %s", m_period, m_last_value, status);
       data.AddLog(FUNC_ID_TECHNICAL_RSI, tick_id, log_message);
+      */
       
       return true;
    }
@@ -134,9 +124,18 @@ public:
    }
    
    //-------------------------------------------------------------------
-   //| 判定メソッド（修正：メソッド呼び出しに変更）                          |
+   //| 買われすぎレベルを取得                                             |
    //-------------------------------------------------------------------
-   bool IsOverbought() const { return (m_last_value >= GetOverboughtLevel()); }
-   bool IsOversold()   const { return (m_last_value <= GetOversoldLevel()); }
+   double GetOverboughtLevel() const
+   {
+      return m_overbought_level;
+   }
+   
+   //-------------------------------------------------------------------
+   //| 売られすぎレベルを取得                                             |
+   //-------------------------------------------------------------------
+   double GetOversoldLevel() const
+   {
+      return m_oversold_level;
+   }
 };
-//+------------------------------------------------------------------+
