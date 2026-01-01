@@ -253,7 +253,7 @@ private:
    }
    
    //-------------------------------------------------------------------
-   //| 注文修正処理（Phase 3: 実装）                                      |
+   //| 注文修正処理（Phase 3: 実装、Phase 5: SL/TP再計算追加）            |
    //-------------------------------------------------------------------
    bool HandleModify(CLA_Data &data, ulong tick_id)
    {
@@ -262,6 +262,12 @@ private:
       double buy_price  = data.GetOCOBuyPrice();
       double sell_price = data.GetOCOSellPrice();
       
+      // ★Phase 5: SL/TP再計算用パラメータ取得
+      int    sl_points = (int)data.GetOCOSLPoints();
+      int    tp_points = (int)data.GetOCOTPPoints();
+      double point     = SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+      int    digits    = (int)SymbolInfoInteger(Symbol(), SYMBOL_DIGITS);
+      
       bool modified = false;
       
       // BuyStop MODIFY
@@ -269,14 +275,18 @@ private:
       {
          if(exMQL.OrderSelect(buy_ticket))
          {
+            // ★Phase 5: 新価格に合わせてSL/TPを再計算
+            double new_buy_sl = (sl_points > 0) ? NormalizeDouble(buy_price - sl_points * point, digits) : 0;
+            double new_buy_tp = (tp_points > 0) ? NormalizeDouble(buy_price + tp_points * point, digits) : 0;
+            
             MqlTradeRequest request = {};
             MqlTradeResult  result  = {};
             
             request.action = TRADE_ACTION_MODIFY;
             request.order  = buy_ticket;
             request.price  = buy_price;
-            request.sl     = exMQL.OrderGetDouble(ORDER_SL);
-            request.tp     = exMQL.OrderGetDouble(ORDER_TP);
+            request.sl     = new_buy_sl;  // ★Phase 5: 再計算したSL
+            request.tp     = new_buy_tp;  // ★Phase 5: 再計算したTP
             
             if(!exMQL.OrderSend(request, result))
             {
@@ -302,14 +312,18 @@ private:
       {
          if(exMQL.OrderSelect(sell_ticket))
          {
+            // ★Phase 5: 新価格に合わせてSL/TPを再計算
+            double new_sell_sl = (sl_points > 0) ? NormalizeDouble(sell_price + sl_points * point, digits) : 0;
+            double new_sell_tp = (tp_points > 0) ? NormalizeDouble(sell_price - tp_points * point, digits) : 0;
+            
             MqlTradeRequest request = {};
             MqlTradeResult  result  = {};
             
             request.action = TRADE_ACTION_MODIFY;
             request.order  = sell_ticket;
             request.price  = sell_price;
-            request.sl     = exMQL.OrderGetDouble(ORDER_SL);
-            request.tp     = exMQL.OrderGetDouble(ORDER_TP);
+            request.sl     = new_sell_sl;  // ★Phase 5: 再計算したSL
+            request.tp     = new_sell_tp;  // ★Phase 5: 再計算したTP
             
             if(!exMQL.OrderSend(request, result))
             {

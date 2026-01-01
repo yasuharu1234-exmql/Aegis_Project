@@ -62,7 +62,7 @@ public:
    }
    
    //-------------------------------------------------------------------
-   //| 更新処理（毎Tick呼び出し）- MQL準拠版                              |
+   //| 更新処理（毎Tick呼び出し）- Phase 6: COMPLETED後も呼び続ける       |
    //-------------------------------------------------------------------
    void Update(CLA_Data &data, ulong tick_id)
    {
@@ -74,7 +74,9 @@ public:
       }
       
       // ========== 現在の Strategy を実行 ==========
-      // ★MQL準拠: GetPointer経由で取得した参照を使用
+      // ★Phase 6: COMPLETED 状態でも Update() を呼び続ける
+      // これにより HandleCompleted() でポジションクローズを検出し、
+      // IDLE へ遷移できる
       if(!m_current.Update(data, tick_id))
       {
          // Update が false を返した場合（エラー発生）
@@ -82,15 +84,17 @@ public:
          // エラー時も継続（Strategy 側で対処済みと判断）
       }
       
-      // ========== COMPLETED 検知（MQL準拠・安全） ==========
-      // ★仮想関数による完了検知（dynamic_cast 不要）
-      if(m_current.IsCompleted())
-      {
-         Print("✅ [StrategyManager] Strategy COMPLETED → 呼び出し停止");
-         m_has_strategy = false;
-         // m_current はクリアしない（Phase F で再利用の可能性）
-         // 次の Strategy は Phase F で実装予定
-      }
+      // ========== COMPLETED 検知（Phase 6: ログのみ、呼び出しは継続） ==========
+      // ★Phase 6 変更点:
+      // - COMPLETED になっても m_has_strategy を false にしない
+      // - Update() を呼び続けることで HandleCompleted() が実行され続ける
+      // - IDLE に戻ったら IsCompleted() が false になり、新OCO配置が実行される
+      // 
+      // ★注意: このログは COMPLETED → IDLE → COMPLETED のたびに出力される
+      // （過度なログ出力を避けるため、将来的には状態遷移検出が必要）
+      
+      // COMPLETED 検知はログ用途のみ（呼び出しは継続）
+      // （Phase F で複数戦略切り替え時に活用予定）
    }
    
    //-------------------------------------------------------------------

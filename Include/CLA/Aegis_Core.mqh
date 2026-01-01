@@ -43,12 +43,12 @@ input int    InpOCOSLPoints        = 100;     // ストップロス（ポイン�
 input int    InpOCOTPPoints        = 200;     // テイクプロフィット（ポイント）
 
 // ========== 追従設定 ==========
-input int    InpTrailTriggerPoints      = 10;   // 追従開始トリガー（ポイント）
-input int    InpTrailIntervalSec        = 0;    // 追従判定間隔（秒、0=毎Tick）
-input int    InpMaxSpreadPoints         = 30;   // 最大許容スプレッド（ポイント）
+input int    InpTrailTriggerPoints      = 100;   // 追従開始トリガー（ポイント）
+input int    InpTrailIntervalSec        = 30;    // 追従判定間隔（秒、0=毎Tick）
+input int    InpMaxSpreadPoints         = 150;   // 最大許容スプレッド（ポイント）
 input int    InpSpreadWideIntervalSec   = 60;   // スプレッド拡大時の待機時間（秒）
 input bool   InpUseIntervalOHLC         = true; // 間隔モード時にOHLCを使用
-input int    InpMaxTrailCount           = 0;    // 最大追従回数（0=無制限）
+input int    InpMaxTrailCount           = 10;    // 最大追従回数（0=無制限）
 
 // ========== ログ設定 ==========
 input int    InpMaxLogRecords      = 2048;    // ログ最大記録件数
