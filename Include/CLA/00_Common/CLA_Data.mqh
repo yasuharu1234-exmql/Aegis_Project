@@ -324,7 +324,7 @@ public:
       // コンソールログも出力（オプション）
       if(m_console_log_enabled)
       {
-         PrintFormat("[StateLog] %s | LogID=%d | %s", level, log_id, message);
+//          PrintFormat("[StateLog] %s | LogID=%d | %s", level, log_id, message);
       }
    }
    

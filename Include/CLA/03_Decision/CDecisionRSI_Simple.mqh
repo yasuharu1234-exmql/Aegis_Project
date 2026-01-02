@@ -2,6 +2,11 @@
 //|                                      CDecisionRSI_Simple.mqh     |
 //|                                  Copyright 2025, Aegis Project   |
 //|                          https://github.com/YasuharuEA/Aegis     |
+//|                                                                  |
+//| Phase 6 Task 2 - Phase 5                                         |
+//|  - 判断層ログをPhase 6仕様準拠に変更                               |
+//|  - AddLog() → AddLogEx() に変更                                  |
+//|  - 状態変化時のみログ出力                                         |
 //+------------------------------------------------------------------+
 #property copyright   "Copyright 2025, Aegis Project"
 #property link        "https://github.com/YasuharuEA/Aegis"
@@ -41,6 +46,9 @@ private:
    double           m_oversold;      // 売られすぎ閾値
    double           m_overbought;    // 買われすぎ閾値
    
+   //--- Phase 6 Task 2 - Phase 5: ログ状態管理
+   ENUM_SIGNAL_TYPE m_prev_signal;   // 前回のシグナル（状態変化検出用）
+   
 public:
    //-------------------------------------------------------------------
    //| コンストラクタ                                                     |
@@ -60,6 +68,7 @@ public:
       m_rsi_observer = rsi_observer;
       m_oversold = oversold;
       m_overbought = overbought;
+      m_prev_signal = SIGNAL_NONE;  // Phase 5: 初期化
    }
    
    //-------------------------------------------------------------------
@@ -94,6 +103,9 @@ public:
          Print("[RSI判断] エラー: RSI観測クラスが初期化されていません");
          return false;
       }
+      
+      // Phase 5: 状態リセット
+      m_prev_signal = SIGNAL_NONE;
       
       PrintFormat("[RSI判断] 初期化成功 (売られすぎ: %.1f, 買われすぎ: %.1f)",
          m_oversold, m_overbought);
@@ -130,44 +142,76 @@ public:
       ENUM_SIGNAL_TYPE signal = SIGNAL_NONE;
       double strength = 0.0;
       string reason = "";
+      double threshold = 0.0;  // 使用した閾値
       
       if(rsi_value < m_oversold)
       {
          // 売られすぎ → 買いシグナル
          signal = SIGNAL_BUY;
          strength = (m_oversold - rsi_value) / m_oversold;  // 確信度を計算
-         reason = StringFormat("RSI: %.1f → 買いシグナル発生！（売られすぎ）", rsi_value);
+         threshold = m_oversold;
+         reason = StringFormat("RSI=%.1f < %.1f (売られすぎ) → 買いシグナル", rsi_value, m_oversold);
       }
       else if(rsi_value > m_overbought)
       {
          // 買われすぎ → 売りシグナル
          signal = SIGNAL_SELL;
          strength = (rsi_value - m_overbought) / (100.0 - m_overbought);  // 確信度を計算
-         reason = StringFormat("RSI: %.1f → 売りシグナル発生！（買われすぎ）", rsi_value);
+         threshold = m_overbought;
+         reason = StringFormat("RSI=%.1f > %.1f (買われすぎ) → 売りシグナル", rsi_value, m_overbought);
       }
       else
       {
          // 中立 → 待機
          signal = SIGNAL_NONE;
          strength = 0.0;
-         reason = StringFormat("RSI: %.1f → 待機中（中立ゾーン）", rsi_value);
+         threshold = 0.0;
+         reason = StringFormat("RSI=%.1f (中立ゾーン) → 待機", rsi_value);
       }
       
       // 判断結果を保存
       SetSignal(signal, strength, current_price);
       
-      // ログ記録（シグナル発生時は強調）
-      if(signal != SIGNAL_NONE)
+      // ★Phase 6 Task 2 - Phase 5: 状態変化時のみログ記録
+      if(signal != m_prev_signal)
       {
-         // シグナル発生時は目立つログ
-         data.AddLog(FUNC_ID_LOGIC_RSI_SIMPLE, tick_id, 
-            StringFormat("🎯 %s (確信度: %.1f%%)", reason, strength * 100.0));
+         // 状態が変化した → ログ記録
+         if(InpEnableStateLog)
+         {
+            if(signal != SIGNAL_NONE)
+            {
+               // LOG_ID_DECISION (110): 判断結果記録
+               data.AddLogEx(
+                  LOG_ID_RSI_DECISION,  // 110
+                  "DECISION",
+                  DoubleToString(rsi_value, 1),
+                  DoubleToString(threshold, 1),
+                  DoubleToString(strength * 100.0, 1),
+                  "",
+                  reason,
+                  true  // 重要ログ
+               );
+            }
+            else
+            {
+               // LOG_ID_DECISION_SKIP (111): 判断保留（中立ゾーン）
+               data.AddLogEx(
+                  LOG_ID_DECISION_SKIP,  // 111
+                  "DECISION_SKIP",
+                  DoubleToString(rsi_value, 1),
+                  DoubleToString(m_oversold, 1),
+                  DoubleToString(m_overbought, 1),
+                  "",
+                  reason,
+                  false
+               );
+            }
+         }
+         
+         // 状態更新
+         m_prev_signal = signal;
       }
-      else
-      {
-         // 待機中は通常ログ（頻度を抑えたい場合はコメントアウト可）
-         // data.AddLog(FUNC_ID_LOGIC_RSI_SIMPLE, tick_id, reason);
-      }
+      // 状態変化なし → ログ抑制（Phase 6仕様準拠）
       
       return true;
    }
