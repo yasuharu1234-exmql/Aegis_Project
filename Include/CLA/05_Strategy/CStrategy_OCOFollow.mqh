@@ -19,6 +19,11 @@
 //|  - MODIFY は毎Tick1回まで                                        |
 //|  - 約定検出後は即CANCEL → その後はNOOP                           |
 //|                                                                  |
+//| Phase 2-1 (Phase 6 状態ログ基盤整備)                              |
+//|  - ログ状態管理用メンバ変数追加                                  |
+//|  - m_stateのprivate化とアクセサ整備                              |
+//|  - IDLE遷移時の自動ログリセット機構                              |
+//|                                                                  |
 //| Prohibited                                                       |
 //|  - Execution層のロジック変更                                     |
 //|  - ログ追加（CLA_Dataに任せる）                                  |
@@ -48,7 +53,9 @@ private:
       OCO_STATE_COMPLETED      // 役割完了（片側約定→反対側キャンセル済み）
    };
    
+   // ===== Phase 2-1: m_stateのprivate化 =====
    ENUM_OCO_STATE m_state;           // 現在の状態
+   
    bool           m_modify_done;     // 今Tickで既にMODIFY済みか
    
    //--- 内部変数（input変数からコピー）
@@ -67,6 +74,25 @@ private:
    //--- 内部状態変数
    datetime m_last_order_action_time; // 前回注文配置または変更成功時刻
    int      m_trail_count;            // 現在の追従回数
+   
+   // ===== Phase 2-1: ログ状態管理用メンバ変数 =====
+   bool     m_no_change_logged;       // NO_CHANGE初回ログ済みフラグ
+   bool     m_spread_ng_prev;         // 前回スプレッド状態（NG=true）
+   int      m_spread_last_logged;     // 前回ログ記録時のスプレッド値（pt）
+   double   m_buy_price_last_logged;  // 前回ログ記録時のBuy価格
+   double   m_sell_price_last_logged; // 前回ログ記録時のSell価格
+   
+   //+------------------------------------------------------------------+
+   //| ログ状態リセット（Phase 2-1 追加）                                    |
+   //+------------------------------------------------------------------+
+   void ResetLogState()
+   {
+      m_no_change_logged = false;
+      m_spread_ng_prev = false;
+      m_spread_last_logged = 0;
+      m_buy_price_last_logged = 0.0;
+      m_sell_price_last_logged = 0.0;
+   }
 
 public:
    //-------------------------------------------------------------------
@@ -94,6 +120,13 @@ public:
       // 内部状態の初期化
       m_last_order_action_time = 0;
       m_trail_count = 0;
+      
+      // Phase 2-1 追加: ログ状態初期化
+      m_no_change_logged = false;
+      m_spread_ng_prev = false;
+      m_spread_last_logged = 0;
+      m_buy_price_last_logged = 0.0;
+      m_sell_price_last_logged = 0.0;
    }
    
    //-------------------------------------------------------------------
@@ -156,6 +189,25 @@ public:
       Print("[OCO戦略] 終了処理");
    }
    
+   //+------------------------------------------------------------------+
+   //| 状態遷移（Phase 2-1 追加）                                          |
+   //+------------------------------------------------------------------+
+   void EnterState(ENUM_OCO_STATE new_state)
+   {
+      m_state = new_state;
+      
+      // IDLE遷移時にログ状態リセット
+      if(new_state == OCO_STATE_IDLE)
+      {
+         ResetLogState();
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 状態取得（Phase 2-1 追加）                                          |
+   //+------------------------------------------------------------------+
+   ENUM_OCO_STATE GetState() const { return m_state; }
+   
    //-------------------------------------------------------------------
    //| メイン更新処理（毎Tick呼び出し）                                   |
    //-------------------------------------------------------------------
@@ -165,7 +217,8 @@ public:
       m_modify_done = false;
       
       // ========== 状態に応じた処理分岐 ==========
-      switch(m_state)
+      // Phase 2-1: GetState()経由に変更
+      switch(GetState())
       {
          case OCO_STATE_IDLE:
             return HandleIdle(data, tick_id);
@@ -177,7 +230,7 @@ public:
             return HandleCompleted(data, tick_id);
             
          default:
-            Print("❌ [OCO戦略] 未知の状態: ", m_state);
+            Print("❌ [OCO戦略] 未知の状態: ", GetState());
             return false;
       }
    }
@@ -187,7 +240,8 @@ public:
    //-------------------------------------------------------------------
    virtual bool IsCompleted() const override
    {
-      return (m_state == OCO_STATE_COMPLETED);
+      // Phase 2-1: GetState()経由に変更
+      return (GetState() == OCO_STATE_COMPLETED);
    }
 
 private:
@@ -220,8 +274,31 @@ private:
       // Execution層に配置要求
       data.SetExecRequest(EXEC_REQ_PLACE, tick_id);
       
-      // 状態遷移
-      m_state = OCO_STATE_ACTIVE;
+      // Phase 2-1: EnterState()経由に変更
+      EnterState(OCO_STATE_ACTIVE);
+      
+      // Phase 2-2: OCO配置ログ（配置成功は次Tickで確認されるため、ここでは配置要求のみ記録）
+      if(InpEnableStateLog)
+      {
+         double ask = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+         double bid = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+         double point = SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+         int digits = (int)SymbolInfoInteger(Symbol(), SYMBOL_DIGITS);
+         
+         double buy_price = NormalizeDouble(ask + m_oco_distance_points * point, digits);
+         double sell_price = NormalizeDouble(bid - m_oco_distance_points * point, digits);
+         
+         data.AddLogEx(
+            LOG_ID_OCO_PLACE,
+            "OCO_PLACE",
+            "0",  // チケット番号は次Tickで確定
+            DoubleToString(buy_price, digits),
+            "0",  // チケット番号は次Tickで確定
+            DoubleToString(sell_price, digits),
+            StringFormat("距離=%dpt", m_oco_distance_points),
+            false
+         );
+      }
       
       Print("✅ [OCO戦略] OCO配置要求: 距離=", m_oco_distance_points, "pt");
       return true;
@@ -238,9 +315,25 @@ private:
       // ========== 約定検出 ==========
       if(PositionsTotal() > 0)
       {
+         // Phase 2-2: 約定検出ログ
+         if(InpEnableStateLog)
+         {
+            data.AddLogEx(
+               LOG_ID_FILL_DETECT,
+               "FILL_DETECT",
+               "",
+               "",
+               "",
+               "",
+               "片側約定検出",
+               false
+            );
+         }
+         
          Print("✅ [OCO戦略] 片側約定を検出 → 反対側キャンセル要求");
          data.SetExecRequest(EXEC_REQ_CANCEL, tick_id);
-         m_state = OCO_STATE_COMPLETED;
+         // Phase 2-1: EnterState()経由に変更
+         EnterState(OCO_STATE_COMPLETED);
          return true;
       }
       
@@ -255,7 +348,7 @@ private:
          return true;
       
       // 3. スプレッドチェック
-      if(!CheckSpread())
+      if(!CheckSpread(data))
          return true;
       
       // 4. 最大追従回数チェック
@@ -302,7 +395,7 @@ private:
    //-------------------------------------------------------------------
    //| スプレッドチェック                                                 |
    //-------------------------------------------------------------------
-   bool CheckSpread()
+   bool CheckSpread(CLA_Data &data)
    {
       double ask   = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
       double bid   = SymbolInfoDouble(Symbol(), SYMBOL_BID);
@@ -313,9 +406,48 @@ private:
       
       // スプレッド計算（ポイント）
       int spread_points = (int)((ask - bid) / point);
+      bool spread_ok = (spread_points <= m_max_spread_points);
+      
+      // Phase 2-2: スプレッド状態ログ（状態遷移時のみ）
+      if(InpEnableStateLog && spread_ok != m_spread_ng_prev)
+      {
+         int digits = (int)SymbolInfoInteger(Symbol(), SYMBOL_DIGITS);
+         
+         if(spread_ok)
+         {
+            // OK状態に遷移
+            data.AddLogEx(
+               LOG_ID_SPREAD_OK,
+               "SPREAD_OK",
+               IntegerToString(spread_points),
+               IntegerToString(m_max_spread_points),
+               DoubleToString(ask, digits),
+               DoubleToString(bid, digits),
+               "スプレッド正常化",
+               false
+            );
+         }
+         else
+         {
+            // NG状態に遷移
+            data.AddLogEx(
+               LOG_ID_SPREAD_SKIP,
+               "SPREAD_SKIP",
+               IntegerToString(spread_points),
+               IntegerToString(m_max_spread_points),
+               DoubleToString(ask, digits),
+               DoubleToString(bid, digits),
+               "スプレッド超過で追従中断",
+               false
+            );
+         }
+         
+         m_spread_ng_prev = !spread_ok;
+         m_spread_last_logged = spread_points;
+      }
       
       // 最大許容スプレッドを超えている場合
-      if(spread_points > m_max_spread_points)
+      if(!spread_ok)
       {
          Print("[OCO戦略] スプレッド拡大: ", spread_points, "pt > ", m_max_spread_points, "pt → 追従スキップ");
          return false;
@@ -371,14 +503,16 @@ private:
       double new_sell = NormalizeDouble(bid - m_oco_distance_points * point, digits);
       
       bool need_modify = false;
+      double buy_diff_pt = 0;
+      double sell_diff_pt = 0;
       
       // BuyStop：価格を下げられるなら有利
       if(buy_ticket > 0)
       {
          double current_buy = data.GetOCOBuyPrice();
-         double price_diff = (current_buy - new_buy) / point;
+         buy_diff_pt = (current_buy - new_buy) / point;
          
-         if(price_diff >= m_trail_trigger_points)
+         if(buy_diff_pt >= m_trail_trigger_points)
          {
             data.SetOCOBuyPrice(new_buy);
             need_modify = true;
@@ -389,13 +523,56 @@ private:
       if(sell_ticket > 0)
       {
          double current_sell = data.GetOCOSellPrice();
-         double price_diff = (new_sell - current_sell) / point;
+         sell_diff_pt = (new_sell - current_sell) / point;
          
-         if(price_diff >= m_trail_trigger_points)
+         if(sell_diff_pt >= m_trail_trigger_points)
          {
             data.SetOCOSellPrice(new_sell);
             need_modify = true;
          }
+      }
+      
+      // Phase 2-2: ログ追加
+      if(InpEnableStateLog)
+      {
+         double max_diff = MathMax(buy_diff_pt, sell_diff_pt);
+         
+         // NO_CHANGE判定（両方がInpNoChangeLogDelta未満）
+         if(buy_diff_pt < InpNoChangeLogDelta && sell_diff_pt < InpNoChangeLogDelta)
+         {
+            if(!m_no_change_logged)
+            {
+               data.AddLogEx(
+                  LOG_ID_NO_CHANGE,
+                  "NO_CHANGE",
+                  DoubleToString(buy_diff_pt, 1),
+                  DoubleToString(sell_diff_pt, 1),
+                  IntegerToString(InpNoChangeLogDelta),
+                  "",
+                  "価格変更不要",
+                  false
+               );
+               m_no_change_logged = true;
+            }
+         }
+         // 追従トリガー発動
+         else if(need_modify)
+         {
+            data.AddLogEx(
+               LOG_ID_TRAIL_TRIGGER,
+               "TRAIL_TRIGGER",
+               DoubleToString(max_diff, 1),
+               IntegerToString(m_trail_trigger_points),
+               IntegerToString(m_trail_count),
+               IntegerToString(m_max_trail_count),
+               "追従トリガー発動",
+               false
+            );
+            
+            // 追従実行時はNO_CHANGEフラグをリセット
+            m_no_change_logged = false;
+         }
+         // 中間値（InpNoChangeLogDelta 〜 InpTrailTriggerPoints）→ ログなし
       }
       
       return need_modify;
@@ -429,7 +606,8 @@ private:
       // ========== ポジションクローズ検出 → IDLE遷移 ==========
       if(PositionsTotal() == 0)
       {
-         m_state = OCO_STATE_IDLE;
+         // Phase 2-1: EnterState()経由に変更（自動でResetLogState()が呼ばれる）
+         EnterState(OCO_STATE_IDLE);
          m_trail_count = 0; // 追従回数をリセット
          Print("✅ [OCO戦略] ポジションクローズ検出 → IDLE状態へ遷移");
       }

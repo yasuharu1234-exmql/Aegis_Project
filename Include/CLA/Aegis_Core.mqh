@@ -54,6 +54,10 @@ input int    InpMaxTrailCount           = 10;    // 最大追従回数（0=無�
 input int    InpMaxLogRecords      = 2048;    // ログ最大記録件数
 input bool   InpEnableConsoleLog   = true;    // コンソールログ出力
 
+// ========== Phase 6: 状態ログ設定 ==========
+input bool   InpEnableStateLog     = true;    // 通常状態ログ有効/無効
+input int    InpNoChangeLogDelta   = 5;       // 価格差分無視閾値（0.5pips）
+input int    InpSpreadLogDelta     = 10;      // スプレッド変化量ログ閾値（1.0pips）
 // ========== リスク管理 ==========
 input int    InpMaxPositions       = 1;       // 同時保有最大ポジション数
 input int    InpMagicNumber        = 20250101; // マジックナンバー
