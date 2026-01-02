@@ -10,7 +10,7 @@
 //|                                                                  |
 //| Core Concept                                                     |
 //|  - Aegisは「壊れた理由を説明できるEA」を目指す                   |
-//|  - 本クラスはそのための“証拠保管庫”である                        |
+//|  - 本クラスはそのための"証拠保管庫"である                        |
 //|                                                                  |
 //| Design Policy                                                    |
 //|  - 判断ロジックは一切持たない                                    |
@@ -21,17 +21,43 @@
 //|  - Execution層の状態・要求・結果が追加される                     |
 //|  - 既存メンバの意味は絶対に変更しない                            |
 //|                                                                  |
+//| Phase 6 Notes                                                    |
+//|  - 状態ログ専用CSV (StateLog_*.csv) を追加                       |
+//|  - AddLogEx() メソッド追加                                       |
+//|  - RFC 4180準拠CSVエスケープ実装                                 |
+//|                                                                  |
 //| Change Policy                                                    |
 //|  - 拡張のみ許可（削除・再設計・再配置は禁止）                    |
 //|                                                                  |
 //+------------------------------------------------------------------+
 
 #property copyright   "Copyright 2025, Aegis Project"
-#property version     "1.20"
+#property version     "1.21"
 #property strict
 
 #include "CLA_Common.mqh"
 #include "CFileLogger.mqh"
+
+//+------------------------------------------------------------------+
+//| CSVエスケープ処理（RFC 4180準拠）                                 |
+//| Phase 6: カンマ・ダブルクォート・改行を含む文字列を安全にCSV化    |
+//+------------------------------------------------------------------+
+string EscapeCSV(string text)
+{
+   // カンマ、改行、ダブルクォートを含む場合
+   if(StringFind(text, ",") >= 0 || 
+      StringFind(text, "\n") >= 0 || 
+      StringFind(text, "\"") >= 0)
+   {
+      // ダブルクォートをエスケープ（" → ""）
+      StringReplace(text, "\"", "\"\"");
+      
+      // 全体をダブルクォートで囲む
+      return "\"" + text + "\"";
+   }
+   
+   return text;  // エスケープ不要
+}
 
 //+------------------------------------------------------------------+
 //| グローバルデータ管理クラス                                         |
@@ -48,6 +74,10 @@ private:
    string      m_log_buffer[];
    int         m_log_buffer_size;
    int         m_log_buffer_count;
+   
+   // ========== Phase 6: 状態ログ専用 ==========
+   int         m_state_log_handle;       // 状態ログ専用ファイルハンドル
+   ulong       m_tick_counter;           // Tick番号カウンタ（簡易実装）
    
    // ========== レイヤー状態管理 ==========
    ENUM_LAYER_STATUS m_layer_status[6];
@@ -97,6 +127,10 @@ public:
       m_log_buffer_count = 0;
       ArrayResize(m_log_buffer, m_log_buffer_size);
       
+      // ★Phase 6: 状態ログ初期化
+      m_state_log_handle = INVALID_HANDLE;
+      m_tick_counter = 0;
+      
       for(int i = 0; i < 6; i++)
       {
          m_layer_status[i] = STATUS_NONE;
@@ -135,6 +169,7 @@ public:
    
    //+------------------------------------------------------------------+
    //| 初期化                                                           |
+   //| Phase 6: 状態ログ専用CSVファイルを作成                            |
    //+------------------------------------------------------------------+
    bool Init()
    {
@@ -144,16 +179,59 @@ public:
          return false;
       }
       
+      // ★Phase 6: 状態ログ用CSVファイル初期化
+      datetime now = TimeCurrent();
+      MqlDateTime dt;
+      TimeToStruct(now, dt);
+      string timestamp_str = StringFormat("%04d%02d%02d_%02d%02d%02d",
+                                          dt.year,
+                                          dt.mon,
+                                          dt.day,
+                                          dt.hour,
+                                          dt.min,
+                                          dt.sec);
+      
+      string state_log_filename = "StateLog_" + timestamp_str + ".csv";
+      string state_log_path = "Aegis_Logs\\" + state_log_filename;
+      
+      // FILE_ANSI: UTF-8ではなくANSI（日本語対応のため）
+      // FILE_WRITE: 書き込みモード
+      // FILE_CSV: CSV形式
+      m_state_log_handle = FileOpen(state_log_path, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+      
+      if(m_state_log_handle == INVALID_HANDLE)
+      {
+         Print("[エラー] 状態ログファイル作成失敗: ", state_log_path);
+         Print("   LastError: ", GetLastError());
+         return false;
+      }
+      
+      // CSVヘッダー行を書き込み
+      string header = "Time_ms,TickSeq,Level,LogID,LogName,Param1,Param2,Param3,Param4,Message\n";
+      FileWriteString(m_state_log_handle, header);
+      FileFlush(m_state_log_handle);  // ★クラッシュ対策
+      
+      Print("[状態ログ] ファイル作成完了: ", state_log_path);
+      
       AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data初期化完了");
       return true;
    }
    
    //+------------------------------------------------------------------+
    //| 終了処理                                                         |
+   //| Phase 6: 状態ログファイルをクローズ                               |
    //+------------------------------------------------------------------+
    void Deinit()
    {
       AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data終了処理", true);
+      
+      // ★Phase 6: 状態ログファイルクローズ
+      if(m_state_log_handle != INVALID_HANDLE)
+      {
+         FileClose(m_state_log_handle);
+         m_state_log_handle = INVALID_HANDLE;
+         Print("[状態ログ] ファイルクローズ完了");
+      }
    }
    
    //+------------------------------------------------------------------+
@@ -165,7 +243,7 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| ログ追加                                                         |
+   //| ログ追加（既存）                                                 |
    //+------------------------------------------------------------------+
    void AddLog(ENUM_FUNCTION_ID func_id, ulong tick_id, string message, bool important = false)
    {
@@ -191,6 +269,62 @@ public:
       if(m_console_log_enabled)
       {
          PrintFormat("[%s] Tick#%llu Func#%d: %s", level, tick_id, func_id, message);
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| ログ追加（Phase 6: 拡張版）                                       |
+   //| 状態ログ専用CSVに記録                                             |
+   //+------------------------------------------------------------------+
+   void AddLogEx(
+      int log_id,           // ENUM_LOG_IDも受け付ける
+      string log_name,
+      string param1,        // string型に変更（Gemini指摘対応）
+      string param2,
+      string param3,
+      string param4,
+      string message,
+      bool important = false
+   )
+   {
+      if(m_state_log_handle == INVALID_HANDLE)
+      {
+         // ファイルが開けていない場合は何もしない
+         return;
+      }
+      
+      // Tick番号をインクリメント
+      m_tick_counter++;
+      
+      // Time_ms: ミリ秒単位のタイムスタンプ
+      datetime now_sec = TimeCurrent();
+      ulong time_ms = (ulong)(now_sec) * 1000;  // 秒→ミリ秒
+      
+      // Level: INFO / WARN
+      string level = important ? "WARN" : "INFO";
+      
+      // CSV行を組み立て
+      string line = StringFormat("%llu,%llu,%s,%d,%s,%s,%s,%s,%s,%s",
+         time_ms,
+         m_tick_counter,
+         level,
+         log_id,
+         log_name,
+         EscapeCSV(param1),
+         EscapeCSV(param2),
+         EscapeCSV(param3),
+         EscapeCSV(param4),
+         EscapeCSV(message)
+      );
+      
+      // ファイル書き込み
+      FileWriteString(m_state_log_handle, line + "\n");
+      FileFlush(m_state_log_handle);  // ★クラッシュ対策（毎回フラッシュ）
+      
+      // コンソールログも出力（オプション）
+      if(m_console_log_enabled)
+      {
+         PrintFormat("[StateLog] %s | LogID=%d | %s", level, log_id, message);
       }
    }
    
@@ -248,7 +382,7 @@ public:
    //+------------------------------------------------------------------+
    //| RSI値設定                                                        |
    //+------------------------------------------------------------------+
-   void SetRSI(double rsi)
+   void SetRSIValue(double rsi)
    {
       m_rsi_value = rsi;
    }
@@ -256,10 +390,18 @@ public:
    //+------------------------------------------------------------------+
    //| RSI値取得                                                        |
    //+------------------------------------------------------------------+
-   double GetRSI() const
+   double GetRSIValue() const
    {
       return m_rsi_value;
    }
+   
+   //+------------------------------------------------------------------+
+   //| 市場データ取得                                                    |
+   //+------------------------------------------------------------------+
+   double GetCurrentBid() const { return m_current_bid; }
+   double GetCurrentAsk() const { return m_current_ask; }
+   double GetCurrentSpread() const { return m_current_spread; }
+   datetime GetCurrentTime() const { return m_current_time; }
    
    //+------------------------------------------------------------------+
    //| Gatekeeper結果設定                                                |
@@ -445,6 +587,78 @@ public:
    void SetLastOrderActionTime(datetime time) { m_last_order_action_time = time; }
    datetime GetLastOrderActionTime() const { return m_last_order_action_time; }
 };
+
+//+------------------------------------------------------------------+
+//| Phase 6 テスト用関数                                              |
+//| AddLogEx()の動作確認用                                            |
+//+------------------------------------------------------------------+
+void TestAddLogEx()
+{
+   CLA_Data data;
+   if(!data.Init())
+   {
+      Print("[テスト失敗] CLA_Data初期化エラー");
+      return;
+   }
+   
+   Print("========== Phase 6 テスト開始 ==========");
+   
+   // テストケース1: チケット番号 + 価格
+   data.AddLogEx(
+      LOG_ID_OCO_PLACE,
+      "TEST_OCO_PLACE",
+      IntegerToString(12345),           // チケット番号
+      DoubleToString(152.480, 3),       // 価格
+      IntegerToString(12346),
+      DoubleToString(152.380, 3),
+      "テスト: RSI=72.5 SellStop優先",
+      false
+   );
+   Print("[テスト1] OCO_PLACE ログ出力完了");
+   
+   // テストケース2: カンマ・引用符を含むメッセージ
+   data.AddLogEx(
+      LOG_ID_MODIFY_FAIL,
+      "TEST_ESCAPE",
+      "1001",
+      "152.500",
+      "",
+      "",
+      "エラー: \"No changes\" detected, spread=15pt",
+      true
+   );
+   Print("[テスト2] CSVエスケープテスト完了");
+   
+   // テストケース3: 空パラメータ
+   data.AddLogEx(
+      LOG_ID_DECISION_SKIP,
+      "TEST_SKIP",
+      "",
+      "",
+      "",
+      "",
+      "理由: クールダウン中",
+      false
+   );
+   Print("[テスト3] 空パラメータテスト完了");
+   
+   // テストケース4: 改行を含むメッセージ
+   data.AddLogEx(
+      LOG_ID_TRAIL_TRIGGER,
+      "TEST_NEWLINE",
+      "999",
+      "157.123",
+      "",
+      "",
+      "追従トリガー\n次の行: 詳細情報",
+      false
+   );
+   Print("[テスト4] 改行エスケープテスト完了");
+   
+   data.Deinit();
+   Print("========== Phase 6 テスト完了 ==========");
+   Print("CSVファイルを確認してください: Aegis_Logs\\StateLog_*.csv");
+}
 
 //+------------------------------------------------------------------+
 //| グローバルインスタンス                                             |

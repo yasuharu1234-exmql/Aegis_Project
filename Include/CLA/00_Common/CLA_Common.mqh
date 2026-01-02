@@ -16,13 +16,16 @@
 //|  - Execution層との接続に必要な型が追加される予定                 |
 //|  - 既存コードとの後方互換性を最優先とする                        |
 //|                                                                  |
+//| Phase 6 Notes                                                    |
+//|  - 状態ログ用のENUM_LOG_ID（100番台）を追加                      |
+//|                                                                  |
 //| Change Policy                                                    |
 //|  - 追加は可、削除・改名・意味変更は禁止                          |
 //|                                                                  |
 //+------------------------------------------------------------------+
 
 #property copyright   "Copyright 2025, Aegis Project"
-#property version     "1.20"
+#property version     "1.21"
 #property strict
 
 #ifndef CLA_COMMON_MQH
@@ -228,11 +231,29 @@ enum ENUM_PANIC_LOG_ID
 };
 
 //+------------------------------------------------------------------+
-//| 通常ログ ID（Phase 3 - Execution）                                |
-//| 実行層の処理ログ用                                                |
+//| 通常ログ ID（Phase 3 - Execution / Phase 6 - State Log）         |
+//| 実行層の処理ログ用 + 状態遷移ログ用                               |
 //+------------------------------------------------------------------+
 enum ENUM_LOG_ID
 {
+   // ========== Phase 6 追加：状態ログ用（100番台） ==========
+   LOG_ID_OCO_PLACE      = 100,  // OCO配置成功
+   LOG_ID_MODIFY_TRY     = 101,  // MODIFY試行
+   LOG_ID_MODIFY_OK      = 102,  // MODIFY成功
+   LOG_ID_MODIFY_FAIL    = 103,  // MODIFY失敗
+   LOG_ID_NO_CHANGE      = 104,  // 価格変更なし（初回のみ）
+   LOG_ID_SPREAD_SKIP    = 105,  // スプレッド超過で追従スキップ
+   LOG_ID_SPREAD_OK      = 106,  // スプレッド正常（状態遷移時のみ）
+   LOG_ID_TRAIL_TRIGGER  = 107,  // 追従トリガー発動
+   LOG_ID_CANCEL_OK      = 108,  // キャンセル成功
+   LOG_ID_FILL_DETECT    = 109,  // 約定検出
+   LOG_ID_RSI_DECISION   = 110,  // RSI判断
+   LOG_ID_DECISION_SKIP  = 111,  // 判断スキップ（何もしなかった理由）
+   
+   // ========== 将来の拡張用 ==========
+   LOG_ID_GATEKEEPER    = 1000,  // Gatekeeper層
+   LOG_ID_OBSERVATION   = 2000,  // Observation層
+   
    // ========== Execution層（3000番台） ==========
    LOG_ID_EXEC_PLACE    = 3001,  // 注文配置
    LOG_ID_EXEC_MODIFY   = 3002,  // 注文修正
@@ -240,8 +261,6 @@ enum ENUM_LOG_ID
    LOG_ID_EXEC_CLOSE    = 3004,  // ポジション決済
    
    // ========== 将来の拡張用 ==========
-   LOG_ID_GATEKEEPER    = 1000,  // Gatekeeper層
-   LOG_ID_OBSERVATION   = 2000,  // Observation層
    LOG_ID_DECISION      = 4000,  // Decision層
    LOG_ID_STRATEGY      = 5000   // Strategy層
 };
