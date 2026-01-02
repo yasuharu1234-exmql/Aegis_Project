@@ -700,3 +700,401 @@ if(fatal)
 
 ========================================
 
+
+========================================
+ここからAegis ファイル・クラス機能一覧
+========================================
+
+Aegis Hybrid EA ファイル・クラス機能一覧
+最終更新: 2026-01-02
+作成者: Genspark AI
+
+========================================
+1. レイヤー別ファイル構成
+========================================
+
+■ 制御層（Control Layer）
+┣━ Aegis_Core.mqh
+┃  役割: Aegis全体の制御フローを統括する中枢
+┃  機能ID: FUNC_ID_MAIN_CONTROL (1)
+┃  主要機能: 各レイヤーの呼び出し順序と責務境界を保証
+┃  実装状態: ✅ 実装済み
+┃
+┣━ Aegis_Hybrid.mq4
+┃  役割: MT4エントリーポイント
+┃  主要機能: OnInit/OnTick/OnDeinit実装
+┃  実装状態: ✅ 実装済み
+┃
+┗━ Aegis_Hybrid.mq5
+   役割: MT5エントリーポイント
+   主要機能: OnInit/OnTick/OnDeinit実装
+   実装状態: ✅ 実装済み
+
+■ Layer 0: Common（共通定義層）
+┣━ CLA_Common.mqh
+┃  役割: Aegis全体で共有される定数・列挙型・構造体の定義
+┃  機能ID: FUNC_ID_COMMON_BASE (10)
+┃  主要定義:
+┃   - ENUM_LAYER_STATUS: レイヤー状態定義
+┃   - ENUM_SIGNAL_TYPE: シグナルタイプ定義
+┃   - ENUM_FUNCTION_ID: 機能ID定義（全レイヤー網羅）
+┃   - ENUM_GK_RESULT: Gatekeeper結果定義
+┃   - ENUM_EXEC_STATE: 実行状態定義
+┃   - ENUM_EXEC_REQUEST: 実行要求定義
+┃   - ENUM_LOG_ID: ログID定義（100番台 Phase 6対応済み）
+┃   - ENUM_LOG_LEVEL: ログレベル定義
+┃   - ENUM_PANIC_LOG_ID: パニックログID定義（200番台）
+┃  実装状態: ✅ 完全実装
+┃
+┣━ CLA_Data.mqh
+┃  クラス名: CLA_Data
+┃  役割: 全レイヤー間で共有される状態・結果・文脈の保持
+┃  機能ID: FUNC_ID_CLA_DATA (900)
+┃  主要機能:
+┃   - 市場データ保持（Bid/Ask/Spread/時刻）
+┃   - 観測データ保持（RSI値など）
+┃   - Gatekeeper状態保持
+┃   - Execution状態管理
+┃   - ログ管理（CFileLogger統合）
+┃   - Phase 6: AddLogEx()メソッド（状態ログ専用CSV）
+┃  実装状態: 🟡 部分実装
+┃  不足機能: AddLogEx()完全実装確認、CSV出力10カラム対応確認
+┃
+┣━ ILogger.mqh
+┃  クラス名: ILogger（インターフェース）
+┃  役割: ログシステムのインターフェース定義
+┃  主要メソッド:
+┃   - Log(): 通常ログ（IDベース・軽量）
+┃   - Panic(): パニックログ（フリーフォーマット・最優先）
+┃   - Flush(): 明示的Flush要求
+┃  実装状態: ✅ 実装済み
+┃
+┗━ CFileLogger.mqh
+   クラス名: CFileLogger
+   役割: ログシステムの実装（リングバッファ＋CSV出力）
+   機能ID: FUNC_ID_STRUCTURED_LOGGER (500)
+   主要機能:
+    - Log()メソッド（通常ログ）
+    - Panic()メソッド（緊急ログ）
+    - Flush()メソッド（ファイル書き出し）
+    - リングバッファ管理
+    - CSV出力
+   実装状態: 🟡 部分実装
+   不足機能: LogRecord構造体にParam3/Param4/LogName/Message追加
+            CSV出力の10カラム対応
+
+■ Layer 1: Gatekeeper（安全制御層）
+┗━ CGatekeeper.mqh
+   クラス名: CGatekeeper
+   役割: 取引の前提条件チェック（最終関門）
+   機能ID: FUNC_ID_GATEKEEPER (100)
+   主要機能:
+    - Tick健全性チェック（時刻逆行、間隔異常）
+    - 市場状態チェック（スプレッド、取引時間、市場クローズ）
+    - 資金状態チェック（証拠金維持率、余剰証拠金）
+    - API状態チェック（接続エラー）
+    - Phase 6: 拒否理由の状態変化ログ
+   実装状態: 🟡 部分実装
+   不足機能: Phase 6 Task 2 - Phase 4のログ出力実装確認
+
+■ Layer 2: Observation（観測層）
+┣━ CObservationBase.mqh
+┃  クラス名: CObservationBase（基底クラス）
+┃  役割: 観測モジュールの基底クラス
+┃  主要機能:
+┃   - Init()メソッド（初期化）
+┃   - Update()メソッド（観測更新）※仮想関数
+┃   - Deinit()メソッド（終了処理）
+┃  実装状態: ✅ 実装済み
+┃
+┣━ CObservationPrice.mqh
+┃  クラス名: CObservationPrice
+┃  役割: 市場価格の観測
+┃  機能ID: FUNC_ID_PRICE_OBSERVER (200)
+┃  主要機能:
+┃   - Bid/Ask価格取得
+┃   - スプレッド計算（ポイント単位）
+┃   - 価格データのCLA_Dataへの格納
+┃  実装状態: ✅ 実装済み
+┃
+┗━ CObservationRSI.mqh
+   クラス名: CObservationRSI
+   役割: RSI（相対力指数）の観測
+   機能ID: FUNC_ID_TECHNICAL_RSI (205)
+   主要機能:
+    - RSI計算（iRSI関数使用）
+    - RSI値のCLA_Dataへの格納
+   実装状態: ✅ 実装済み
+
+■ Layer 3: Decision（判断層）
+┣━ CDecisionBase.mqh
+┃  クラス名: CDecisionBase（基底クラス）
+┃  役割: 判断モジュールの基底クラス
+┃  主要機能:
+┃   - Update()メソッド（判断更新）※仮想関数
+┃   - IsCompleted()メソッド（完了判定）※Phase 6追加
+┃   - シグナル生成（SIGNAL_BUY/SELL/NONE）
+┃  実装状態: ✅ 実装済み
+┃
+┗━ CDecisionRSI_Simple.mqh
+   クラス名: CDecisionRSI_Simple
+   役割: RSIベースの売買判断
+   機能ID: FUNC_ID_LOGIC_RSI_SIMPLE (310)
+   主要機能:
+    - RSI閾値判定（買われすぎ/売られすぎ）
+    - シグナル生成（BUY/SELL/NONE）
+    - Phase 6: 判断結果ログ（LOG_ID 110, 111）
+   実装状態: 🟡 部分実装
+   不足機能: LOG_ID 110, 111のログ出力実装確認
+
+■ Layer 4: Execution（実行層）
+┣━ CExecutionBase.mqh
+┃  クラス名: CExecutionBase（基底クラス）
+┃  役割: 注文実行の基底クラス
+┃  主要機能:
+┃   - OrderSend()ラッパー
+┃   - OrderModify()ラッパー
+┃   - OrderClose()ラッパー
+┃   - エラーハンドリング
+┃  実装状態: ✅ 実装済み
+┃
+┗━ CExecutionManager.mqh
+   クラス名: CExecutionManager
+   役割: 実行要求の処理（PLACE/MODIFY/CANCEL）
+   機能ID: FUNC_ID_ORDER_GENERATOR (400)
+   主要機能:
+    - ProcessRequest()メソッド（要求振り分け）
+    - 注文配置（PLACE）
+    - 注文変更（MODIFY）
+    - 注文取消（CANCEL）
+    - Phase 6: 実行結果ログ（LOG_ID 101-103, 108）
+   実装状態: 🟡 部分実装
+   不足機能: LOG_ID 101-103, 108のログ出力実装確認
+
+■ Layer 5: Strategy（戦略層）
+┣━ CStrategy_OCOFollow.mqh
+┃  クラス名: CStrategy_OCOFollow
+┃  役割: OCO（Buy Stop/Sell Stop）追従戦略
+┃  主要機能:
+┃   - OCO注文配置
+┃   - 未約定注文の価格追従（MODIFY）
+┃   - 片側約定時の反対側取消
+┃   - スプレッドチェック
+┃   - Phase 2-1: ログ状態管理変数（完了）
+┃   - Phase 6: 戦略層ログ（LOG_ID 100, 104-107, 109）
+┃  実装状態: 🟡 部分実装
+┃  不足機能:
+┃   - EnterState()メソッド未実装
+┃   - GetState()メソッド未実装
+┃   - 直接代入（m_state = ...）の修正（9箇所）
+┃   - LOG_ID 100, 104-107, 109のログ出力未実装
+┃
+┗━ CStrategyManager.mqh
+   クラス名: CStrategyManager
+   役割: アクティブな戦略の管理・呼び出し
+   主要機能:
+    - Strategy登録（Init）
+    - 毎Tick Strategy更新（Update）
+    - 完了検知（IsCompleted）
+    - Phase 6: COMPLETED後も呼び続ける仕様対応
+   実装状態: ✅ 実装済み
+
+■ 外部ライブラリ
+┣━ EXMQL.mqh
+┃  役割: MQL取引ライブラリ
+┃  主要機能: OrderSend/Modify/Close等のラッパー
+┃  実装状態: ✅ 実装済み
+┃
+┗━ errordescription.txt
+   役割: エラーコード定義
+   主要機能: trade server / runtime error codes
+   実装状態: ✅ 実装済み
+
+========================================
+2. インクルード依存関係ツリー
+========================================
+
+Aegis_Hybrid.mq4 / Aegis_Hybrid.mq5 (エントリーポイント)
+└── Aegis_Core.mqh (全体制御)
+    ├── CLA/00_Common/CLA_Common.mqh (共通定義)
+    ├── CLA/00_Common/CLA_Data.mqh (共有状態管理)
+    │   ├── CLA_Common.mqh ← 再利用
+    │   └── CFileLogger.mqh (ログ実装)
+    │       ├── ILogger.mqh (インターフェース)
+    │       ├── CLA_Common.mqh ← 再利用
+    │       └── EXMQL/EXMQL.mqh (外部ライブラリ)
+    ├── CLA/01_Gatekeeper/CGatekeeper.mqh (安全制御)
+    │   ├── CLA_Common.mqh ← 再利用
+    │   └── CLA_Data.mqh ← 再利用
+    ├── CLA/02_Observation/CObservationPrice.mqh (価格観測)
+    │   ├── CObservationBase.mqh (基底クラス)
+    │   │   ├── CLA_Common.mqh ← 再利用
+    │   │   └── CLA_Data.mqh ← 再利用
+    │   ├── CLA_Common.mqh ← 再利用
+    │   └── CLA_Data.mqh ← 再利用
+    ├── CLA/02_Observation/CObservationRSI.mqh (RSI観測)
+    │   ├── CObservationBase.mqh ← 再利用
+    │   ├── CLA_Common.mqh ← 再利用
+    │   └── CLA_Data.mqh ← 再利用
+    ├── CLA/03_Decision/CDecisionRSI_Simple.mqh (RSI判断)
+    │   ├── CDecisionBase.mqh (判断基底クラス)
+    │   │   ├── CLA_Common.mqh ← 再利用
+    │   │   └── CLA_Data.mqh ← 再利用
+    │   └── CObservationRSI.mqh ← 再利用
+    ├── CLA/04_Execution/CExecutionBase.mqh (実行基底)
+    │   ├── CLA_Common.mqh ← 再利用
+    │   ├── CLA_Data.mqh ← 再利用
+    │   └── EXMQL/EXMQL.mqh ← 再利用
+    ├── CLA/04_Execution/CExecutionManager.mqh (実行管理)
+    │   ├── CLA_Common.mqh ← 再利用
+    │   ├── CLA_Data.mqh ← 再利用
+    │   ├── CExecutionBase.mqh ← 再利用
+    │   └── EXMQL/EXMQL.mqh ← 再利用
+    ├── CLA/05_Strategy/CStrategy_OCOFollow.mqh (OCO戦略)
+    │   ├── CLA_Common.mqh ← 再利用
+    │   ├── CLA_Data.mqh ← 再利用
+    │   └── CDecisionBase.mqh ← 再利用
+    └── CLA/05_Strategy/CStrategyManager.mqh (戦略管理)
+        ├── CLA_Data.mqh ← 再利用
+        └── CDecisionBase.mqh ← 再利用
+
+【依存関係の特徴】
+- ✅ 循環依存なし: 全てのレイヤーは下位レイヤーのみに依存
+- ✅ 共通定義の再利用: CLA_Common.mqh, CLA_Data.mqhは各所で参照
+- ✅ レイヤー境界明確: 上位レイヤーが下位レイヤーを直接参照しない設計
+
+========================================
+3. 機能ID（ENUM_FUNCTION_ID）マッピング
+========================================
+
+FUNC_ID_NONE         = 0    (未使用)
+FUNC_ID_MAIN_CONTROL = 1    (Aegis_Core.mqh)
+
+■ Layer 0: Common (0-99)
+FUNC_ID_COMMON_BASE  = 10   (CLA_Common.mqh)
+FUNC_ID_CLA_DATA     = 900  (CLA_Data.mqh)
+
+■ Layer 1: Gatekeeper (100-199)
+FUNC_ID_GATEKEEPER    = 100 (CGatekeeper.mqh)
+FUNC_ID_KILL_SWITCH   = 101 (未実装)
+FUNC_ID_HEALTH_MONITOR = 102 (未実装)
+
+■ Layer 2: Observation (200-299)
+FUNC_ID_PRICE_OBSERVER   = 200 (CObservationPrice.mqh)
+FUNC_ID_TIME_SIGNAL      = 201 (未実装)
+FUNC_ID_ECONOMIC_SIGNAL  = 202 (未実装)
+FUNC_ID_TECHNICAL_MA     = 203 (未実装)
+FUNC_ID_TECHNICAL_MACD   = 204 (未実装)
+FUNC_ID_TECHNICAL_RSI    = 205 (CObservationRSI.mqh)
+FUNC_ID_TECHNICAL_STOCH  = 206 (未実装)
+FUNC_ID_SIGNAL_INTEGRATOR = 210 (未実装)
+
+■ Layer 3: Decision (300-399)
+FUNC_ID_ENVIRONMENT_JUDGE  = 300 (未実装)
+FUNC_ID_DECISION_EVALUATOR = 301 (未実装)
+FUNC_ID_EXTERNAL_CONFIG    = 302 (未実装)
+FUNC_ID_HOT_RELOAD         = 303 (未実装)
+FUNC_ID_LOGIC_RSI_SIMPLE   = 310 (CDecisionRSI_Simple.mqh)
+
+■ Layer 4: Execution (400-499)
+FUNC_ID_ORDER_GENERATOR  = 400 (CExecutionManager.mqh)
+FUNC_ID_POSITION_MANAGER = 401 (未実装)
+FUNC_ID_TRAILING_MANAGER = 402 (未実装)
+FUNC_ID_CLOSE_JUDGE      = 403 (未実装)
+
+■ Layer 5: Logging (500-599)
+FUNC_ID_STRUCTURED_LOGGER = 500 (CFileLogger.mqh)
+
+========================================
+4. ログID（ENUM_LOG_ID）マッピング
+========================================
+
+■ 100番台: 通常状態ログ（Phase 6）
+LOG_ID_OCO_PLACE     = 100 (OCO配置成功)
+LOG_ID_MODIFY_TRY    = 101 (注文変更試行)
+LOG_ID_MODIFY_OK     = 102 (注文変更成功)
+LOG_ID_MODIFY_FAIL   = 103 (注文変更失敗)
+LOG_ID_NO_CHANGE     = 104 (価格変更不要)
+LOG_ID_SPREAD_SKIP   = 105 (スプレッド超過)
+LOG_ID_SPREAD_OK     = 106 (スプレッド正常化)
+LOG_ID_TRAIL_TRIGGER = 107 (追従トリガー)
+LOG_ID_CANCEL_OK     = 108 (注文取消成功)
+LOG_ID_FILL_DETECT   = 109 (約定検出)
+LOG_ID_RSI_DECISION  = 110 (RSI判断)
+LOG_ID_DECISION_SKIP = 111 (判断スキップ)
+
+■ 1000番台: Gatekeeper層（将来拡張用）
+LOG_ID_GATEKEEPER    = 1000 (予約)
+
+■ 2000番台: Observation層（将来拡張用）
+LOG_ID_OBSERVATION   = 2000 (予約)
+
+■ 3000番台: Execution層（既存）
+LOG_ID_EXEC_PLACE    = 3001 (注文配置)
+LOG_ID_EXEC_MODIFY   = 3002 (注文修正)
+LOG_ID_EXEC_CANCEL   = 3003 (注文取消)
+LOG_ID_EXEC_CLOSE    = 3004 (ポジション決済)
+
+■ 4000番台: Decision層（将来拡張用）
+LOG_ID_DECISION      = 4000 (予約)
+
+■ 5000番台: Strategy層（将来拡張用）
+LOG_ID_STRATEGY      = 5000 (予約)
+
+========================================
+5. 実装状態サマリー
+========================================
+
+【完全実装】✅
+- Aegis_Core.mqh (制御層)
+- Aegis_Hybrid.mq4/mq5 (エントリーポイント)
+- CLA_Common.mqh (共通定義)
+- ILogger.mqh (ログインターフェース)
+- CObservationBase.mqh (観測基底)
+- CObservationPrice.mqh (価格観測)
+- CObservationRSI.mqh (RSI観測)
+- CDecisionBase.mqh (判断基底)
+- CExecutionBase.mqh (実行基底)
+- CStrategyManager.mqh (戦略管理)
+- EXMQL.mqh (外部ライブラリ)
+
+【部分実装】🟡
+- CLA_Data.mqh (AddLogEx確認必要)
+- CFileLogger.mqh (CSV 10カラム対応必要)
+- CGatekeeper.mqh (Phase 6ログ確認必要)
+- CDecisionRSI_Simple.mqh (ログ出力確認必要)
+- CExecutionManager.mqh (ログ出力確認必要)
+- CStrategy_OCOFollow.mqh (Phase 2-1完了必要、ログ未実装)
+
+【未実装】❌
+- 経済指標観測（CObservationEconomic）
+- 環境認識機能（FUNC_ID_ENVIRONMENT_JUDGE）
+- ポジション追従戦略（CStrategy_Trailing系）
+- パニックログ本実装（CriticalSnapshotLogger）
+- スポットログ本実装（SpotLogger）
+
+========================================
+6. 次のステップ
+========================================
+
+優先度1: Phase 6完了（9日）
+ - Task 1: Phase 2-1完了（0.5日）
+ - Task 2-8: ログ実装（5.5日）
+ - Task 9: 長期テスト（3日）
+
+優先度2: 高優先機能（5日）
+ - ポジション追従戦略（3日）
+ - 環境認識機能（2日）
+
+優先度3: Phase 7実装（7日）
+ - パニックログ（2日）
+ - スポットログ（2日）
+ - 経済指標観測（3日）
+
+総所要期間: 約4.5週間（22日）
+
+========================================
+
+
+
+

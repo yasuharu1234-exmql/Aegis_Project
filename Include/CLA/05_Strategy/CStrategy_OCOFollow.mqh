@@ -315,18 +315,32 @@ private:
       // ========== 約定検出 ==========
       if(PositionsTotal() > 0)
       {
-         // Phase 2-2: 約定検出ログ
+         // Phase 2-2 Task 4: 約定検出ログ（改善版）
          if(InpEnableStateLog)
          {
+            // チケット情報取得
+            ulong buy_ticket = data.GetOCOBuyTicket();
+            ulong sell_ticket = data.GetOCOSellTicket();
+            
+            // どちら側が約定したか判定（簡易実装：Buyチケットが残っていればSell約定）
+            bool buy_filled = (buy_ticket == 0 || !OrderSelect((int)buy_ticket));
+            ulong filled_ticket = buy_filled ? buy_ticket : sell_ticket;
+            string side = buy_filled ? "Buy" : "Sell";
+            
+            string message = StringFormat(
+               "約定検出 %s側約定 Ticket:%llu 反対側キャンセル実施",
+               side, filled_ticket
+            );
+            
             data.AddLogEx(
                LOG_ID_FILL_DETECT,
                "FILL_DETECT",
-               "",
-               "",
-               "",
-               "",
-               "片側約定検出",
-               false
+               IntegerToString(filled_ticket),        // Param1: 約定チケット
+               buy_filled ? "1" : "2",                // Param2: 約定方向（1=Buy, 2=Sell）
+               "",                                    // Param3: 未使用
+               "",                                    // Param4: 未使用
+               message,
+               true  // 重要ログ（WARN）
             );
          }
          
@@ -437,8 +451,8 @@ private:
                IntegerToString(m_max_spread_points),
                DoubleToString(ask, digits),
                DoubleToString(bid, digits),
-               "スプレッド超過で追従中断",
-               false
+               "スプレッド超過により追従中断",
+               true  // 警告レベル
             );
          }
          

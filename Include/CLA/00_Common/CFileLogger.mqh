@@ -4,10 +4,11 @@
 //| Layer   : Execution (Logger Implementation)                     |
 //|                                                                  |
 //| Purpose                                                          |
-//|  Phase 4.5: ログ出力完成版                                        |
-//|  - Log()メソッド実装                                              |
-//|  - リングバッファ実装                                             |
-//|  - CSV出力機能実装                                                |
+//|  Phase 6 Task 2: 10カラムCSV出力対応                             |
+//|  - LogRecord構造体拡張（param3, param4, log_name, message追加）  |
+//|  - Log()メソッド拡張（6パラメータ対応）                          |
+//|  - GetLogName()完全実装（100番台対応）                           |
+//|  - Flush() CSV出力実装（10カラム）                               |
 //|                                                                  |
 //+------------------------------------------------------------------+
 
@@ -22,7 +23,7 @@
 #include "../../EXMQL/EXMQL.mqh"  // Aegis Phase 1: StopEA()使用のため
 
 //+------------------------------------------------------------------+
-//| ログレコード構造体                                                 |
+//| ログレコード構造体（Phase 6 Task 2拡張版）                        |
 //+------------------------------------------------------------------+
 struct LogRecord
 {
@@ -31,13 +32,17 @@ struct LogRecord
    uchar level;         // ログレベル
    uchar precision;     // 精度（未使用・将来拡張用）
    ushort reserved;     // 予約（未使用・将来拡張用）
-   int param1;          // パラメータ1（未使用・将来拡張用）
-   int param2;          // パラメータ2（未使用・将来拡張用）
+   int param1;          // パラメータ1
+   int param2;          // パラメータ2
+   int param3;          // パラメータ3 ★Phase 6追加
+   int param4;          // パラメータ4 ★Phase 6追加
    uint time_ms;        // 時刻（ミリ秒）
+   string log_name;     // ログ名称（最大32文字）★Phase 6追加
+   string message;      // 説明文（最大256文字）★Phase 6追加
 };
 
 //+------------------------------------------------------------------+
-//| ファイルロガー実装（Phase 4.5完成版）                              |
+//| ファイルロガー実装（Phase 6対応版）                               |
 //+------------------------------------------------------------------+
 class CFileLogger : public ILogger
 {
@@ -49,83 +54,84 @@ private:
    int m_buffer_count;          // 現在のレコード数
    int m_max_records;           // 最大記録件数
    
-   // ========== 基本状態 ==========
-   bool m_enabled;              // 有効フラグ
-   bool m_console_log_enabled;  // コンソールログ有効
-   
-   // ========== ファイル管理 ==========
-   string m_panic_file;         // Panicログファイル名
-   
-   // ========== 統計 ==========
+   // ========== 状態管理 ==========
+   bool m_enabled;              // ロガー有効フラグ
+   bool m_console_log_enabled;  // コンソールログ有効フラグ
    int m_panic_count;           // Panic発生回数
-
+   
 public:
    //-------------------------------------------------------------------
    //| コンストラクタ                                                     |
    //-------------------------------------------------------------------
    CFileLogger()
    {
+      m_enabled = true;
+      m_console_log_enabled = false;  // デフォルトはコンソールログOFF
+      m_panic_count = 0;
       m_buffer_head = 0;
       m_buffer_tail = 0;
       m_buffer_count = 0;
       m_max_records = 512;
-      m_enabled = false;
-      m_console_log_enabled = true;
-      m_panic_count = 0;
-      m_panic_file = "";
-      
-      //       ArrayInitialize(m_buffer, 0);
    }
    
    //-------------------------------------------------------------------
-   //| デストラクタ                                                       |
+   //| 初期化                                                            |
    //-------------------------------------------------------------------
-   ~CFileLogger()
+   bool Init()
    {
-      if(m_enabled)
-      {
-         Flush();
-      }
-   }
-   
-   //-------------------------------------------------------------------
-   //| 初期化                                                             |
-   //-------------------------------------------------------------------
-   bool Init(int max_records = 512, bool enable_console_log = true)
-   {
-      m_max_records = MathMin(max_records, 512); // 最大512件
-      m_console_log_enabled = enable_console_log;
+      m_enabled = true;
       m_buffer_head = 0;
       m_buffer_tail = 0;
       m_buffer_count = 0;
-      m_panic_count = 0;
       
-      //       ArrayInitialize(m_buffer, 0);
-      
-      // Panicファイル名生成
-      datetime now = TimeCurrent();
-      string date_str = TimeToString(now, TIME_DATE | TIME_MINUTES | TIME_SECONDS);
-      StringReplace(date_str, ":", "");
-      StringReplace(date_str, " ", "_");
-      StringReplace(date_str, ".", "");
-      
-      m_panic_file = "aegis_panic_" + date_str + ".log";
-      
-      m_enabled = true;
-      
-      Print("[Logger] Phase 4.5 初期化完了: 最大件数=", m_max_records, 
-            ", コンソールログ=", (m_console_log_enabled ? "ON" : "OFF"));
-      
+      Print("[CFileLogger] 初期化完了");
       return true;
    }
    
    //-------------------------------------------------------------------
-   //| ログ記録（Phase 4.5: 本実装）                                      |
+   //| 終了処理                                                          |
+   //-------------------------------------------------------------------
+   void Deinit()
+   {
+      // 残っているログをFlush
+      Flush();
+      Print("[CFileLogger] 終了処理完了");
+   }
+   
+   //-------------------------------------------------------------------
+   //| ロガー有効化/無効化                                               |
+   //-------------------------------------------------------------------
+   void Enable() { m_enabled = true; }
+   void Disable() { m_enabled = false; }
+   bool IsEnabled() const { return m_enabled; }
+   
+   //-------------------------------------------------------------------
+   //| コンソールログ有効化/無効化                                        |
+   //-------------------------------------------------------------------
+   void EnableConsoleLog(bool enable) { m_console_log_enabled = enable; }
+   
+   //-------------------------------------------------------------------
+   //| ログ記録（基本版: ILogger準拠）                                    |
    //-------------------------------------------------------------------
    virtual void Log(int log_id,
                     uchar level,
                     int p1 = 0,
                     int p2 = 0) override
+   {
+      // 拡張版を呼び出し
+      Log(log_id, level, p1, p2, 0, 0, "");
+   }
+   
+   //-------------------------------------------------------------------
+   //| ログ記録（Phase 6拡張版: 6パラメータ対応）                         |
+   //-------------------------------------------------------------------
+   void Log(int log_id,
+            uchar level,
+            int p1,
+            int p2,
+            int p3,
+            int p4,
+            string msg)
    {
       if(!m_enabled)
          return;
@@ -139,7 +145,11 @@ public:
       record.reserved = 0;
       record.param1 = p1;
       record.param2 = p2;
+      record.param3 = p3;            // ★Phase 6追加
+      record.param4 = p4;            // ★Phase 6追加
       record.time_ms = (uint)(TimeLocal() * 1000); // ミリ秒（簡易実装）
+      record.log_name = GetLogName(log_id);  // ★Phase 6追加
+      record.message = msg;          // ★Phase 6追加
       
       // バッファに書き込み
       m_buffer[m_buffer_head] = record;
@@ -159,12 +169,12 @@ public:
       // コンソールログ
       if(m_console_log_enabled)
       {
-         PrintFormat("[%s] [%s] Tick=%d P1=%d P2=%d", 
+         PrintFormat("[%s] [%s] Tick=%d P1=%d P2=%d P3=%d P4=%d %s", 
                      GetLevelName(level), 
-                     GetLogName(log_id), 
+                     record.log_name, 
                      record.tick_seq,
-                     p1,
-                     p2);
+                     p1, p2, p3, p4,
+                     msg);
       }
    }
    
@@ -198,60 +208,63 @@ public:
    }
    
    //-------------------------------------------------------------------
-   //| Flush（Phase 4.5: CSV出力実装）                                    |
+   //| Flush（Phase 6: 10カラムCSV出力実装）                             |
    //-------------------------------------------------------------------
    virtual void Flush() override
    {
-      if(!m_enabled)
+      if(!m_enabled || m_buffer_count == 0)
          return;
-      
-      if(m_buffer_count == 0)
-      {
-         Print("[Logger] Flush: レコードなし");
-         return;
-      }
       
       // ファイル名生成
-      MqlDateTime dt;
-      TimeToStruct(TimeLocal(), dt);
-      string filename = StringFormat("Aegis_Logs/%04d%02d%02d_%02d%02d%02d.csv", dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
+      datetime now = TimeCurrent();
+      string filename = "StateLog_" + TimeToString(now, TIME_DATE) + ".csv";
+      StringReplace(filename, ".", "");
       
-      // ファイルオープン
-      int handle = FileOpen(filename, FILE_WRITE | FILE_CSV | FILE_ANSI | FILE_COMMON, ',');
+      // ファイルオープン（追記モード）
+      int handle = FileOpen(filename, FILE_WRITE|FILE_CSV|FILE_ANSI|FILE_COMMON, ',');
       if(handle == INVALID_HANDLE)
       {
-         Print("[CFileLogger] ファイルオープン失敗: ", filename, " Error=", GetLastError());
+         Print("[Logger] ファイルオープン失敗: ", filename, " Error=", GetLastError());
          return;
       }
       
-      // ヘッダー書き込み
-      FileWrite(handle, "Time_ms", "TickSeq", "Level", "LogID", "LogName", "Param1", "Param2");
+      // ヘッダー出力（ファイルサイズ0の場合のみ）
+      if(FileSize(handle) == 0)
+      {
+         FileWrite(handle, "Time_ms", "TickSeq", "Level", "LogID", "LogName", 
+                   "Param1", "Param2", "Param3", "Param4", "Message");
+      }
       
-      // レコード書き込み
-      int index = m_buffer_tail;
+      // バッファからCSV出力
       for(int i = 0; i < m_buffer_count; i++)
       {
-         LogRecord rec = m_buffer[index];
+         int idx = (m_buffer_tail + i) % m_max_records;
+         LogRecord rec = m_buffer[idx];
+         
+         string level_str = GetLevelName(rec.level);
+         string msg_escaped = EscapeCSV(rec.message);
          
          FileWrite(handle, 
-                   (string)rec.time_ms,
-                   (string)rec.tick_seq,
-                   GetLevelName(rec.level),
-                   (string)rec.log_id,
-                   GetLogName(rec.log_id),
-                   (string)rec.param1,
-                   (string)rec.param2);
-         
-         index = (index + 1) % m_max_records;
+                   rec.time_ms,
+                   rec.tick_seq,
+                   level_str,
+                   rec.log_id,
+                   rec.log_name,
+                   rec.param1,
+                   rec.param2,
+                   rec.param3,
+                   rec.param4,
+                   msg_escaped);
       }
       
       FileClose(handle);
-      Print("[CFileLogger] ログ出力完了: ", filename, " (", m_buffer_count, " records)");
       
       // バッファクリア
+      m_buffer_count = 0;
       m_buffer_head = 0;
       m_buffer_tail = 0;
-      m_buffer_count = 0;
+      
+      Print("[Logger] Flush完了: ", m_buffer_count, "件出力 -> ", filename);
    }
    
    //-------------------------------------------------------------------
@@ -262,17 +275,48 @@ public:
    
 private:
    //-------------------------------------------------------------------
-   //| ログID → 文字列変換                                                |
+   //| CSV エスケープ処理（Phase 6追加）                                  |
+   //-------------------------------------------------------------------
+   string EscapeCSV(string text)
+   {
+      if(StringFind(text, ",") >= 0 || 
+         StringFind(text, "\n") >= 0 || 
+         StringFind(text, "\"") >= 0)
+      {
+         StringReplace(text, "\"", "\"\"");
+         return "\"" + text + "\"";
+      }
+      return text;
+   }
+   
+   //-------------------------------------------------------------------
+   //| ログID → 文字列変換（Phase 6完全実装）                             |
    //-------------------------------------------------------------------
    string GetLogName(int log_id)
    {
       switch(log_id)
       {
-         case LOG_ID_EXEC_PLACE:  return "PLACE";
-         case LOG_ID_EXEC_MODIFY: return "MODIFY";
-         case LOG_ID_EXEC_CANCEL: return "CANCEL";
-         case LOG_ID_EXEC_CLOSE:  return "CLOSE";
-         default: return StringFormat("ID_%d", log_id);
+         // ========== 100番台: Phase 6 通常状態ログ ==========
+         case 100: return "OCO_PLACE";
+         case 101: return "MODIFY_TRY";
+         case 102: return "MODIFY_OK";
+         case 103: return "MODIFY_FAIL";
+         case 104: return "NO_CHANGE";
+         case 105: return "SPREAD_SKIP";
+         case 106: return "SPREAD_OK";
+         case 107: return "TRAIL_TRIGGER";
+         case 108: return "CANCEL_OK";
+         case 109: return "FILL_DETECT";
+         case 110: return "DECISION";
+         case 111: return "DECISION_SKIP";
+         
+         // ========== 3000番台: 実行層ログ（既存） ==========
+         case 3001: return "EXEC_PLACE";
+         case 3002: return "EXEC_MODIFY";
+         case 3003: return "EXEC_CANCEL";
+         case 3004: return "EXEC_CLOSE";
+         
+         default: return "UNKNOWN";
       }
    }
    
@@ -285,58 +329,60 @@ private:
       {
          case LOG_LEVEL_DEBUG:    return "DEBUG";
          case LOG_LEVEL_INFO:     return "INFO";
-         case LOG_LEVEL_WARNING:  return "WARNING";
+         case LOG_LEVEL_WARNING:  return "WARN";
          case LOG_LEVEL_ERROR:    return "ERROR";
          case LOG_LEVEL_CRITICAL: return "CRITICAL";
-         default: return "UNKNOWN";
+         default:                 return "UNKNOWN";
       }
    }
    
    //-------------------------------------------------------------------
-   //| PanicタイプID → 文字列変換                                         |
+   //| Panicタイプ名取得                                                  |
    //-------------------------------------------------------------------
    string GetPanicTypeName(int panic_id)
    {
       switch(panic_id)
       {
-         case PANIC_UNKNOWN:             return "原因不明の異常";
-         case PANIC_MEMORY_CORRUPTION:   return "メモリ破損検知";
-         case PANIC_ORDER_STATE_BROKEN:  return "注文状態の不整合";
-         case PANIC_EXECUTION_INCONSIST: return "実行層の不整合";
-         case PANIC_LOGGER_FAILURE:      return "Logger自体の失敗";
-         case PANIC_INTERNAL_ASSERT:     return "内部アサーション違反";
-         case PANIC_MANUAL_TRIGGER:      return "手動トリガー";
-         default: return "不明なPanic";
+         case PANIC_UNKNOWN:             return "UNKNOWN";
+         case PANIC_MEMORY_CORRUPTION:   return "MEMORY_CORRUPTION";
+         case PANIC_ORDER_STATE_BROKEN:  return "ORDER_STATE_BROKEN";
+         case PANIC_EXECUTION_INCONSIST: return "EXECUTION_INCONSIST";
+         case PANIC_LOGGER_FAILURE:      return "LOGGER_FAILURE";
+         case PANIC_INTERNAL_ASSERT:     return "INTERNAL_ASSERT";
+         case PANIC_MANUAL_TRIGGER:      return "MANUAL_TRIGGER";
+         default: return StringFormat("PANIC_%d", panic_id);
       }
    }
    
    //-------------------------------------------------------------------
-   //| Panicログをファイルに書き込み                                      |
+   //| Panicログをファイルに記録                                          |
    //-------------------------------------------------------------------
    void WritePanicToFile(int panic_id, const string &message)
    {
-      int handle = FileOpen(m_panic_file, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      string filename = StringFormat("Aegis_Logs/PANIC_%04d%02d%02d_%02d%02d%02d.txt", 
+                                     dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
+      
+      int handle = FileOpen(filename, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
       if(handle == INVALID_HANDLE)
       {
-         Print("[CFileLogger] Panicファイルオープン失敗: ", m_panic_file);
+         Print("[CFileLogger] Panicファイル作成失敗");
          return;
       }
       
-      string panic_type = GetPanicTypeName(panic_id);
-      string time_str = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
-      
-      FileWrite(handle, "=================================");
-      FileWrite(handle, "PANIC DETECTED");
-      FileWrite(handle, "=================================");
-      FileWrite(handle, "Time: " + time_str);
-      FileWrite(handle, "Panic ID: " + (string)panic_id);
-      FileWrite(handle, "Type: " + panic_type);
-      FileWrite(handle, "Reason: " + message);
-      FileWrite(handle, "Count: " + (string)m_panic_count);
-      FileWrite(handle, "=================================");
+      FileWrite(handle, "************************************************");
+      FileWrite(handle, "*** PANIC LOG ***");
+      FileWrite(handle, "Time: " + TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS));
+      FileWrite(handle, "Panic ID: " + IntegerToString(panic_id));
+      FileWrite(handle, "Type: " + GetPanicTypeName(panic_id));
+      FileWrite(handle, "Message: " + message);
+      FileWrite(handle, "Count: " + IntegerToString(m_panic_count));
+      FileWrite(handle, "************************************************");
       
       FileClose(handle);
+      Print("[CFileLogger] Panicログ記録完了: ", filename);
    }
 };
 
-#endif
+#endif // CFILELOGGER_MQH

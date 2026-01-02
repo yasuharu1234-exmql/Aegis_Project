@@ -38,6 +38,10 @@
 #include "CLA_Common.mqh"
 #include "CFileLogger.mqh"
 
+// ========== 外部変数参照 ==========
+// InpEnableStateLog: Aegis_Core.mqhで定義される状態ログON/OFFフラグ
+// AddLogEx()内で参照される
+
 //+------------------------------------------------------------------+
 //| CSVエスケープ処理（RFC 4180準拠）                                 |
 //| Phase 6: カンマ・ダブルクォート・改行を含む文字列を安全にCSV化    |
@@ -273,13 +277,22 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| ログ追加（Phase 6: 拡張版）                                       |
-   //| 状態ログ専用CSVに記録                                             |
+   //| 拡張ログ記録（Phase 6 Task 3）                                    |
+   //| [引数]                                                            |
+   //|   log_id  : ログID（100番台）                                     |
+   //|   log_name: ログ名称（OCO_PLACE等）                               |
+   //|   param1-4: パラメータ1-4（文字列化済み数値）                     |
+   //|   message : 説明文（最大256文字）                                 |
+   //|   important: 重要フラグ（true=WARN, false=INFO）                 |
+   //| [用途]                                                            |
+   //|   Phase 6通常状態ログの記録専用                                   |
+   //| [実装]                                                            |
+   //|   CFileLoggerの拡張版Log()を呼び出し                              |
    //+------------------------------------------------------------------+
    void AddLogEx(
-      int log_id,           // ENUM_LOG_IDも受け付ける
+      int log_id,
       string log_name,
-      string param1,        // string型に変更（Gemini指摘対応）
+      string param1,
       string param2,
       string param3,
       string param4,
@@ -287,45 +300,21 @@ public:
       bool important = false
    )
    {
-      if(m_state_log_handle == INVALID_HANDLE)
-      {
-         // ファイルが開けていない場合は何もしない
+      // 状態ログ無効時は何もしない
+      if(!InpEnableStateLog)
          return;
-      }
       
-      // Tick番号をインクリメント
-      m_tick_counter++;
+      // ログレベル決定
+      uchar level = (uchar)(important ? LOG_LEVEL_WARNING : LOG_LEVEL_INFO);
       
-      // Time_ms: ミリ秒単位のタイムスタンプ
-      datetime now_sec = TimeCurrent();
-      ulong time_ms = (ulong)(now_sec) * 1000;  // 秒→ミリ秒
+      // パラメータを数値に変換（空文字列は0）
+      int p1 = (param1 != "") ? (int)StringToInteger(param1) : 0;
+      int p2 = (param2 != "") ? (int)StringToInteger(param2) : 0;
+      int p3 = (param3 != "") ? (int)StringToInteger(param3) : 0;
+      int p4 = (param4 != "") ? (int)StringToInteger(param4) : 0;
       
-      // Level: INFO / WARN
-      string level = important ? "WARN" : "INFO";
-      
-      // CSV行を組み立て
-      string line = StringFormat("%llu,%llu,%s,%d,%s,%s,%s,%s,%s,%s",
-         time_ms,
-         m_tick_counter,
-         level,
-         log_id,
-         log_name,
-         EscapeCSV(param1),
-         EscapeCSV(param2),
-         EscapeCSV(param3),
-         EscapeCSV(param4),
-         EscapeCSV(message)
-      );
-      
-      // ファイル書き込み
-      FileWriteString(m_state_log_handle, line + "\n");
-      FileFlush(m_state_log_handle);  // ★クラッシュ対策（毎回フラッシュ）
-      
-      // コンソールログも出力（オプション）
-      if(m_console_log_enabled)
-      {
-//          PrintFormat("[StateLog] %s | LogID=%d | %s", level, log_id, message);
-      }
+      // CFileLoggerの拡張版Log()を呼び出し
+      m_logger.Log(log_id, level, p1, p2, p3, p4, message);
    }
    
    //+------------------------------------------------------------------+
