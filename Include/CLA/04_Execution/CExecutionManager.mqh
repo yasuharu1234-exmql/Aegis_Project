@@ -579,23 +579,226 @@ private:
             return true;
          
          case ACTION_OCO_PLACE:
-            // ★フェーズD: ダミー実装
-            // フェーズE以降で本実装
-            Print("[ExecutionManager] Action: OCO_PLACE（ダミー実行）");
-            data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO_PLACE（ダミー）", tick_id);
-            return true;
-         
+            // ★フェーズG-1: 本実装（最小版）
+            {
+               // Actionから値を取得
+               double buy_price  = action.buy_price;
+               double sell_price = action.sell_price;
+               double lot        = action.lot;
+               double sl         = action.sl;
+               double tp         = action.tp;
+               
+               // 価格情報取得
+               int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+               double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+               
+               // SL/TP を価格に変換
+               double buy_sl  = (sl > 0) ? NormalizeDouble(buy_price - sl, digits) : 0;
+               double buy_tp  = (tp > 0) ? NormalizeDouble(buy_price + tp, digits) : 0;
+               double sell_sl = (sl > 0) ? NormalizeDouble(sell_price + sl, digits) : 0;
+               double sell_tp = (tp > 0) ? NormalizeDouble(sell_price - tp, digits) : 0;
+               
+               // ========== BuyStop 配置 ==========
+               MqlTradeRequest request_buy = {};
+               MqlTradeResult  result_buy  = {};
+               
+               request_buy.action = TRADE_ACTION_PENDING;
+               request_buy.symbol = _Symbol;
+               request_buy.volume = lot;
+               request_buy.type   = ORDER_TYPE_BUY_STOP;
+               request_buy.price  = buy_price;
+               request_buy.sl     = buy_sl;
+               request_buy.tp     = buy_tp;
+               request_buy.comment = "Aegis_OCO_Buy";
+               
+               bool buy_success = exMQL.OrderSend(request_buy, result_buy);
+               
+               if(!buy_success)
+               {
+                  Print("❌ [実行層] BuyStop配置失敗: ", GetLastError());
+                  data.SetExecResult(EXEC_RESULT_REJECTED, "BuyStop配置失敗", tick_id);
+                  return false;
+               }
+               
+               ulong buy_ticket = result_buy.order;
+               Print("✅ [実行層] BuyStop配置成功: チケット=", buy_ticket, " 価格=", buy_price);
+               
+               // ========== SellStop 配置 ==========
+               MqlTradeRequest request_sell = {};
+               MqlTradeResult  result_sell  = {};
+               
+               request_sell.action = TRADE_ACTION_PENDING;
+               request_sell.symbol = _Symbol;
+               request_sell.volume = lot;
+               request_sell.type   = ORDER_TYPE_SELL_STOP;
+               request_sell.price  = sell_price;
+               request_sell.sl     = sell_sl;
+               request_sell.tp     = sell_tp;
+               request_sell.comment = "Aegis_OCO_Sell";
+               
+               bool sell_success = exMQL.OrderSend(request_sell, result_sell);
+               
+               if(!sell_success)
+               {
+                  Print("❌ [実行層] SellStop配置失敗: ", GetLastError());
+                  // ★フェーズH-1: BuyStopロールバック
+                  Print("⚠️ [実行層] SellStop失敗によりBuyStopをロールバック: チケット=", buy_ticket);
+                  
+                  MqlTradeRequest rollback_request = {};
+                  MqlTradeResult  rollback_result  = {};
+                  
+                  rollback_request.action = TRADE_ACTION_REMOVE;
+                  rollback_request.order  = buy_ticket;
+                  
+                  bool rollback_success = exMQL.OrderSend(rollback_request, rollback_result);
+                  
+                  if(rollback_success)
+                  {
+                     Print("✅ [実行層] BuyStopロールバック成功");
+                  }
+                  else
+                  {
+                     Print("❌ [実行層] BuyStopロールバック失敗: ", GetLastError());
+                  }
+                  data.SetExecResult(EXEC_RESULT_REJECTED, "SellStop配置失敗", tick_id);
+                  return false;
+               }
+               
+               ulong sell_ticket = result_sell.order;
+               Print("✅ [実行層] SellStop配置成功: チケット=", sell_ticket, " 価格=", sell_price);
+               
+               // チケット記録
+               data.SetOCOBuyTicket(buy_ticket);
+               data.SetOCOSellTicket(sell_ticket);
+               data.SetOCOBuyPrice(buy_price);
+               data.SetOCOSellPrice(sell_price);
+               
+               // 成功
+               Print("✅ [実行層] OCO配置完了");
+               data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO配置成功", tick_id);
+               return true;
+            }
          case ACTION_OCO_MODIFY:
-            // ★フェーズD: ダミー実装
-            Print("[ExecutionManager] Action: OCO_MODIFY（ダミー実行）");
-            data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO_MODIFY（ダミー）", tick_id);
-            return true;
+            // ★フェーズG-3: 本実装（最小版）
+            {
+               // Actionから新しい価格を取得
+               double new_buy_price  = action.buy_price;
+               double new_sell_price = action.sell_price;
+               
+               // チケット取得
+               ulong buy_ticket  = data.GetOCOBuyTicket();
+               ulong sell_ticket = data.GetOCOSellTicket();
+               
+               bool buy_success = true;
+               bool sell_success = true;
+               
+               // ========== BuyStop変更 ==========
+               if(buy_ticket > 0)
+               {
+                  MqlTradeRequest request_buy = {};
+                  MqlTradeResult  result_buy  = {};
+                  
+                  request_buy.action = TRADE_ACTION_MODIFY;
+                  request_buy.order  = buy_ticket;
+                  request_buy.price  = new_buy_price;
+                  // SL/TPは既存値を維持（簡易実装）
+                  
+                  buy_success = exMQL.OrderSend(request_buy, result_buy);
+                  
+                  if(!buy_success)
+                  {
+                     Print("❌ [実行層] BuyStop変更失敗: チケット=", buy_ticket, " エラー=", GetLastError());
+                  }
+                  else
+                  {
+                     Print("✅ [実行層] BuyStop変更成功: チケット=", buy_ticket, " 新価格=", new_buy_price);
+                     data.SetOCOBuyPrice(new_buy_price);
+                  }
+               }
+               
+               // ========== SellStop変更 ==========
+               if(sell_ticket > 0)
+               {
+                  MqlTradeRequest request_sell = {};
+                  MqlTradeResult  result_sell  = {};
+                  
+                  request_sell.action = TRADE_ACTION_MODIFY;
+                  request_sell.order  = sell_ticket;
+                  request_sell.price  = new_sell_price;
+                  // SL/TPは既存値を維持（簡易実装）
+                  
+                  sell_success = exMQL.OrderSend(request_sell, result_sell);
+                  
+                  if(!sell_success)
+                  {
+                     Print("❌ [実行層] SellStop変更失敗: チケット=", sell_ticket, " エラー=", GetLastError());
+                  }
+                  else
+                  {
+                     Print("✅ [実行層] SellStop変更成功: チケット=", sell_ticket, " 新価格=", new_sell_price);
+                     data.SetOCOSellPrice(new_sell_price);
+                  }
+               }
+               
+               // 結果判定（どちらか成功すればOK）
+               if(buy_success || sell_success)
+               {
+                  Print("✅ [実行層] OCO変更完了");
+                  data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO変更成功", tick_id);
+                  return true;
+               }
+               else
+               {
+                  Print("❌ [実行層] OCO変更失敗（両方失敗）");
+                  data.SetExecResult(EXEC_RESULT_REJECTED, "OCO変更失敗", tick_id);
+                  return false;
+               }
+            }
          
          case ACTION_OCO_CANCEL:
-            // ★フェーズD: ダミー実装
-            Print("[ExecutionManager] Action: OCO_CANCEL（ダミー実行）");
-            data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO_CANCEL（ダミー）", tick_id);
-            return true;
+            // ★フェーズG-2: 本実装（最小版）
+            {
+               // チケット取得
+               ulong buy_ticket  = data.GetOCOBuyTicket();
+               ulong sell_ticket = data.GetOCOSellTicket();
+               
+               // どちらか片方をキャンセル（簡易実装: Buyを優先）
+               ulong target_ticket = 0;
+               if(buy_ticket > 0) {
+                  target_ticket = buy_ticket;
+               } else if(sell_ticket > 0) {
+                  target_ticket = sell_ticket;
+               }
+               
+               if(target_ticket == 0) {
+                  Print("⚠️ [実行層] OCO取消: キャンセル対象チケットなし");
+                  data.SetExecResult(EXEC_RESULT_SUCCESS, "キャンセル対象なし", tick_id);
+                  return true;
+               }
+               // OrderDelete実行（TRADE_ACTION_REMOVE）
+               MqlTradeRequest request = {};
+               MqlTradeResult  result  = {};
+               
+               request.action = TRADE_ACTION_REMOVE;
+               request.order  = target_ticket;
+               
+               bool success = exMQL.OrderSend(request, result);
+               
+               if(!success) {
+                  Print("❌ [実行層] OCO取消失敗: チケット=", target_ticket, " エラー=", GetLastError());
+                  data.SetExecResult(EXEC_RESULT_REJECTED, "OCO取消失敗", tick_id);
+                  return false;
+               }
+               
+               Print("✅ [実行層] OCO取消成功: チケット=", target_ticket);
+               
+               // チケットクリア（簡易実装: 両方クリア）
+               data.SetOCOBuyTicket(0);
+               data.SetOCOSellTicket(0);
+               
+               data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO取消成功", tick_id);
+               return true;
+            }
          
          default:
             // 未知のAction種別

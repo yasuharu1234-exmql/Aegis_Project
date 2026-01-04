@@ -347,19 +347,69 @@ enum ENUM_ACTION_TYPE
 };
 
 //+------------------------------------------------------------------+
-//| Action構造体（フェーズC: 最小構造）                                |
+//| Action構造体（フェーズF-1: フィールド拡張）                        |
 //| [Fields]                                                          |
-//|   type : Action種別                                               |
+//|   type         : Action種別                                       |
+//|   buy_price    : BuyStop価格（PLACE/MODIFY時）                    |
+//|   sell_price   : SellStop価格（PLACE/MODIFY時）                   |
+//|   lot          : 注文ロット（PLACE時のみ使用）                     |
+//|   sl           : ストップロス（PLACE時、将来のBE/Trailing時）       |
+//|   tp           : テイクプロフィット（PLACE時、将来のTP圧縮時）      |
+//|   target_ticket: 変更/取消対象チケット（MODIFY/CANCEL時）          |
+//|   reason       : この判断に至った理由（ログ・デバッグ用）           |
+//|   max_slippage : 許容スリッページ（pips）                          |
+//|   max_retry    : 最大リトライ回数                                  |
 //|                                                                  |
-//| [Future Enhancement]                                              |
-//|   フェーズD以降で追加予定:                                        |
-//|   - パラメータ（価格、ロット、SL/TP等）                           |
-//|   - ログ用の理由文字列                                            |
-//|   - 実行制約条件                                                  |
+//| [Usage by Action Type]                                            |
+//|   ACTION_OCO_PLACE:                                               |
+//|     必須: buy_price, sell_price, lot, sl, tp                     |
+//|     任意: reason, max_slippage, max_retry                        |
+//|   ACTION_OCO_MODIFY:                                              |
+//|     必須: buy_price, sell_price                                  |
+//|     任意: reason, max_retry                                      |
+//|   ACTION_OCO_CANCEL:                                              |
+//|     必須: target_ticket                                          |
+//|     任意: reason, max_retry                                      |
 //+------------------------------------------------------------------+
 struct Action
 {
    ENUM_ACTION_TYPE type;
+   
+   // ===== 価格情報 =====
+   double buy_price;
+   double sell_price;
+   
+   // ===== ロット情報 =====
+   double lot;
+   
+   // ===== SL/TP情報 =====
+   double sl;
+   double tp;
+   
+   // ===== チケット情報 =====
+   ulong target_ticket;
+   
+   // ===== ログ用 =====
+   string reason;
+   
+   // ===== 実行制約 =====
+   int max_slippage;
+   int max_retry;
+   
+   // ===== コンストラクタ（初期化） =====
+   Action()
+   {
+      type           = ACTION_NONE;
+      buy_price      = 0.0;
+      sell_price     = 0.0;
+      lot            = 0.0;
+      sl             = 0.0;
+      tp             = 0.0;
+      target_ticket  = 0;
+      reason         = "";
+      max_slippage   = 0;
+      max_retry      = 0;
+   }
 };
 #endif // CLA_COMMON_MQH
 //+------------------------------------------------------------------+

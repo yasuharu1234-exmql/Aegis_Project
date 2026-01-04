@@ -45,7 +45,27 @@
 //|  - 各 Strategy クラスは本クラスを継承して実装する               |
 //+------------------------------------------------------------------+
 class CDecisionBase
-{
+{   
+   //-------------------------------------------------------------------
+   //| Action候補生成（フェーズF-2追加: 仮想メソッド）                     |
+   //| [引数]                                                            |
+   //|   data    : システム共通データ                                     |
+   //|   tick_id : この操作のユニークID                                   |
+   //| [戻り値]                                                          |
+   //|   Action  : このStrategyが推奨するAction                          |
+   //|                                                                  |
+   //| [Note]                                                            |
+   //|   - デフォルト実装: ACTION_NONE を返す                             |
+   //|   - 各Strategy（子クラス）でオーバーライドして実装                 |
+   //|   - フェーズF-2では仮実装OK（値は全て0/空でよい）                   |
+   //-------------------------------------------------------------------
+   virtual Action GenerateActionCandidate(CLA_Data &data, ulong tick_id)
+   {
+      Action action;  // コンストラクタで初期化済み（全て0/空）
+      action.type = ACTION_NONE;
+      return action;
+   }
+
 protected:
    //--- メンバ変数
    ENUM_FUNCTION_ID m_my_id;        // 自分の機能ID（ログ出力時に使用）

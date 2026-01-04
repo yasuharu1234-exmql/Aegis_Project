@@ -115,6 +115,103 @@ public:
       return true;
    }
    
+   
+   //-------------------------------------------------------------------
+   //| Action候補生成（フェーズF-2実装: オーバーライド）                   |
+   //| [引数]                                                            |
+   //|   data    : システム共通データ                                     |
+   //|   tick_id : この操作のユニークID                                   |
+   //| [戻り値]                                                          |
+   //|   Action  : このStrategyが推奨するAction                          |
+   //|                                                                  |
+   //| [フェーズF-2実装内容]                                              |
+   //|   - 仮実装: ACTION_NONE を返す                                    |
+   //|   - 全フィールドは初期値（0/空）のまま                              |
+   //|                                                                  |
+   //| [フェーズF-3以降の実装予定]                                         |
+   //|   - エントリー条件判定                                             |
+   //|   - 価格計算                                                      |
+   //|   - ロット計算                                                     |
+   //|   - SL/TP設定                                                     |
+   //|   - ACTION_OCO_PLACE / MODIFY / CANCEL の適切な選択               |
+   //-------------------------------------------------------------------
+   virtual Action GenerateActionCandidate(CLA_Data &data, ulong tick_id) override
+   {
+      Action action;  // コンストラクタで初期化済み（全て0/空）
+      
+      // ========== 共通: 価格情報取得 ==========
+      double ask   = data.GetCurrentAsk();
+      double bid   = data.GetCurrentBid();
+      double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+      int    digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+      
+      // ========== 状態確認 ==========
+      ulong buy_ticket  = data.GetOCOBuyTicket();
+      ulong sell_ticket = data.GetOCOSellTicket();
+      bool has_oco_orders = (buy_ticket > 0 || sell_ticket > 0);
+      bool has_position   = (PositionsTotal() > 0);
+      
+      // ========== 優先順位1: CANCEL（ポジション存在） ==========
+      if(has_position)
+      {
+         action.type = ACTION_OCO_CANCEL;
+         action.reason = "OCO_CANCEL: Position detected";
+         return action;
+      }
+      
+      // ========== 優先順位2: MODIFY（OCO注文存在） ==========
+      if(has_oco_orders)
+      {
+         // OCO配置距離を取得
+         double distance_points = data.GetOCODistancePoints();
+         
+         // 新しい価格を計算
+         double new_buy_price  = NormalizeDouble(ask + distance_points * point, digits);
+         double new_sell_price = NormalizeDouble(bid - distance_points * point, digits);
+         
+         action.type = ACTION_OCO_MODIFY;
+         action.buy_price  = new_buy_price;
+         action.sell_price = new_sell_price;
+         action.reason = "OCO_MODIFY: Price follow";
+         
+         // target_ticketは後回し（フェーズF-4では未使用）
+         action.target_ticket = 0;
+         
+         return action;
+      }
+      
+      // ========== 優先順位3: PLACE（エントリー可能） ==========
+      bool entry_clear = data.GetObs_EntryClear();
+      
+      if(entry_clear)
+      {
+         // OCO配置距離を取得
+         double distance_points = data.GetOCODistancePoints();
+         
+         // BuyStop価格 = Ask + 距離
+         double buy_price  = NormalizeDouble(ask + distance_points * point, digits);
+         
+         // SellStop価格 = Bid - 距離
+         double sell_price = NormalizeDouble(bid - distance_points * point, digits);
+         
+         action.type = ACTION_OCO_PLACE;
+         action.buy_price  = buy_price;
+         action.sell_price = sell_price;
+         action.lot = data.GetOCOLot();
+         action.sl = data.GetOCOSLPoints() * point;
+         action.tp = data.GetOCOTPPoints() * point;
+         action.reason = "OCO_PLACE: Entry condition met";
+         
+         return action;
+      }
+      
+      // ========== 優先順位4: NONE（何もしない） ==========
+      action.type = ACTION_NONE;
+      action.reason = "No action required";
+      
+      return action;
+   }
+   
    //-------------------------------------------------------------------
    //| 最後に取得したエントリー可能状態を取得                               |
    //| [戻り値]                                                          |
