@@ -546,4 +546,62 @@ private:
       data.SetExecResult(EXEC_RESULT_SUCCESS, "CLOSE処理（未実装）", tick_id);
       return true;
    }
+   
+   //-------------------------------------------------------------------
+   //| フェーズD追加: Action受け取り入口（最小接続）                       |
+   //| [引数]                                                            |
+   //|   action  : Decision Arbiterから返された最終Action                |
+   //|   data    : システム共通データ                                     |
+   //|   tick_id : この操作のユニークID                                   |
+   //| [戻り値]                                                          |
+   //|   true  : 処理完了                                                |
+   //|   false : 処理失敗                                                |
+   //|                                                                  |
+   //| [Design Philosophy]                                               |
+   //|   - Action → 実行命令への最小マッピング                            |
+   //|   - フェーズDでは「つながること」のみが目的                         |
+   //|   - ダミー実装OK、正しさは問わない                                 |
+   //|                                                                  |
+   //| [Mapping]                                                         |
+   //|   ACTION_NONE       → 何もしない（これも正当な処理）               |
+   //|   ACTION_OCO_PLACE  → ダミー実行（フェーズE以降で本実装）           |
+   //|   ACTION_OCO_MODIFY → ダミー実行（フェーズE以降で本実装）           |
+   //|   ACTION_OCO_CANCEL → ダミー実行（フェーズE以降で本実装）           |
+   //-------------------------------------------------------------------
+   bool ExecuteAction(const Action &action, CLA_Data &data, ulong tick_id)
+   {
+      // ========== Action種別によるマッピング ==========
+      switch(action.type)
+      {
+         case ACTION_NONE:
+            // 何もしない（これも正当なAction処理）
+            Print("[ExecutionManager] Action: NONE（何もしない）");
+            return true;
+         
+         case ACTION_OCO_PLACE:
+            // ★フェーズD: ダミー実装
+            // フェーズE以降で本実装
+            Print("[ExecutionManager] Action: OCO_PLACE（ダミー実行）");
+            data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO_PLACE（ダミー）", tick_id);
+            return true;
+         
+         case ACTION_OCO_MODIFY:
+            // ★フェーズD: ダミー実装
+            Print("[ExecutionManager] Action: OCO_MODIFY（ダミー実行）");
+            data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO_MODIFY（ダミー）", tick_id);
+            return true;
+         
+         case ACTION_OCO_CANCEL:
+            // ★フェーズD: ダミー実装
+            Print("[ExecutionManager] Action: OCO_CANCEL（ダミー実行）");
+            data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO_CANCEL（ダミー）", tick_id);
+            return true;
+         
+         default:
+            // 未知のAction種別
+            Print("[ExecutionManager] 警告: 未知のAction種別: ", action.type);
+            data.SetExecResult(EXEC_RESULT_INVALID_PARAMS, "未知のAction", tick_id);
+            return false;
+      }
+   }
 };

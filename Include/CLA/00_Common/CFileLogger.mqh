@@ -310,6 +310,21 @@ private:
          case 110: return "DECISION";
          case 111: return "DECISION_SKIP";
          
+         // ========== 200番台: パニックログ ==========
+         case 200: return "PANIC_RETRY_EXCEEDED";
+         case 201: return "PANIC_BOTH_FILLED";
+         case 202: return "PANIC_INCONSISTENT";
+         case 203: return "PANIC_RECOVERY_FAILED";
+         case 204: return "PANIC_DEINIT_ABNORMAL";
+         
+         // ========== 300番台: スポットログ ==========
+         case 300: return "SPOT_TRACE";
+         case 301: return "SPOT_STATE_DUMP";
+         case 302: return "SPOT_SPREAD";
+         case 303: return "SPOT_PRICE";
+         case 304: return "SPOT_COUNTER";
+         case 305: return "SPOT_FLAG";
+         
          // ========== 3000番台: 実行層ログ（既存） ==========
          case 3001: return "EXEC_PLACE";
          case 3002: return "EXEC_MODIFY";

@@ -91,6 +91,9 @@ public:
       
       m_last_value = rsi_buffer[0];
       
+      
+      // ★フェーズB追加: CLA_DataにRSI値を格納（観測層→判断層のデータ受け渡し）
+      data.SetRSIValue(m_last_value);
       // ★Phase 5: 毎Tickログを削除
       // 判定ロジックは残すが、ログ出力は削除
       /*
