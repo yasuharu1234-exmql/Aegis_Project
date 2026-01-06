@@ -151,11 +151,17 @@ public:
       bool has_oco_orders = (buy_ticket > 0 || sell_ticket > 0);
       bool has_position   = (PositionsTotal() > 0);
       
+      // ★★★ トレースログ: 関数開始 ★★★
+      Print("[Aegis-TRACE][Decision] === GenerateActionCandidate START ===");
+      Print("[Aegis-TRACE][Decision] buy_ticket=", buy_ticket, " sell_ticket=", sell_ticket);
+      Print("[Aegis-TRACE][Decision] has_oco_orders=", has_oco_orders, " has_position=", has_position);
+      
       // ========== 優先順位1: CANCEL（ポジション存在） ==========
       if(has_position)
       {
          action.type = ACTION_OCO_CANCEL;
          action.reason = "OCO_CANCEL: Position detected";
+         Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_CANCEL");
          return action;
       }
       
@@ -177,11 +183,15 @@ public:
          // target_ticketは後回し（フェーズF-4では未使用）
          action.target_ticket = 0;
          
+         Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_MODIFY");
          return action;
       }
       
       // ========== 優先順位3: PLACE（エントリー可能） ==========
       bool entry_clear = data.GetObs_EntryClear();
+      
+      // ★★★ トレースログ: entry_clear判定 ★★★
+      Print("[Aegis-TRACE][Decision] entry_clear=", entry_clear);
       
       if(entry_clear)
       {
@@ -194,6 +204,9 @@ public:
          // SellStop価格 = Bid - 距離
          double sell_price = NormalizeDouble(bid - distance_points * point, digits);
          
+         // ★★★ トレースログ: ACTION_OCO_PLACE生成 ★★★
+         Print("[Aegis-TRACE][Decision] ACTION_OCO_PLACE: buy_price=", buy_price, " sell_price=", sell_price, " lot=", data.GetOCOLot());
+         
          action.type = ACTION_OCO_PLACE;
          action.buy_price  = buy_price;
          action.sell_price = sell_price;
@@ -202,12 +215,14 @@ public:
          action.tp = data.GetOCOTPPoints() * point;
          action.reason = "OCO_PLACE: Entry condition met";
          
+         Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_PLACE");
          return action;
       }
       
       // ========== 優先順位4: NONE（何もしない） ==========
       action.type = ACTION_NONE;
       action.reason = "No action required";
+      Print("[Aegis-TRACE][Decision] return Action=ACTION_NONE (entry_clear=false)");
       
       return action;
    }

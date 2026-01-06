@@ -123,29 +123,49 @@ private:
    //-------------------------------------------------------------------
    bool HasPendingOrders()
    {
-      int total = exMQL.OrdersTotal();
+      int total = OrdersTotal();
+      
+      // ★★★ トレースログ: 検索開始 ★★★
+      Print("[Aegis-TRACE][Observation] HasPendingOrders: OrdersTotal()=", total);
       
       for(int i = 0; i < total; i++)
       {
-         if(!exMQL.OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         // MQL5: インデックスからチケットを取得
+         ulong ticket = OrderGetTicket(i);
+         if(ticket == 0)
+            continue;
+         
+         // MQL5: チケットで注文を選択
+         if(!exMQL.OrderSelect(ticket))
             continue;
          
          // マジックナンバーチェック
-         if(exMQL.OrderMagicNumber() != m_magic_number)
+         long order_magic = exMQL.OrderGetInteger(ORDER_MAGIC);
+         if(order_magic != m_magic_number)
+         {
+            Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " magic=", order_magic, " (expected=", m_magic_number, ")");
             continue;
+         }
          
          // シンボルチェック
-         if(exMQL.OrderSymbol() != _Symbol)
+         string order_symbol = exMQL.OrderGetString(ORDER_SYMBOL);
+         if(order_symbol != _Symbol)
+         {
+            Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " symbol=", order_symbol, " (expected=", _Symbol, ")");
             continue;
+         }
          
          // 注文タイプチェック（BuyStop or SellStop）
-         int order_type = exMQL.OrderType();
-         if(order_type == OP_BUYSTOP || order_type == OP_SELLSTOP)
+         ENUM_ORDER_TYPE order_type = (ENUM_ORDER_TYPE)exMQL.OrderGetInteger(ORDER_TYPE);
+         Print("[Aegis-TRACE][Observation] Found: ticket=", ticket, " type=", order_type);
+         if(order_type == ORDER_TYPE_BUY_STOP || order_type == ORDER_TYPE_SELL_STOP)
          {
+            Print("[Aegis-TRACE][Observation] HasPendingOrders=TRUE");
             return true;  // 約定前注文あり
          }
       }
       
+      Print("[Aegis-TRACE][Observation] HasPendingOrders=FALSE");
       return false;  // 約定前注文なし
    }
    
@@ -157,29 +177,48 @@ private:
    //-------------------------------------------------------------------
    bool HasPositions()
    {
-      int total = exMQL.OrdersTotal();
+      int total = OrdersTotal();
+      
+      // ★★★ トレースログ: 検索開始 ★★★
+      Print("[Aegis-TRACE][Observation] HasPositions: OrdersTotal()=", total);
       
       for(int i = 0; i < total; i++)
       {
-         if(!exMQL.OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         // MQL5: インデックスからチケットを取得
+         ulong ticket = OrderGetTicket(i);
+         if(ticket == 0)
+            continue;
+         
+         // MQL5: チケットで注文を選択
+         if(!exMQL.OrderSelect(ticket))
             continue;
          
          // マジックナンバーチェック
-         if(exMQL.OrderMagicNumber() != m_magic_number)
+         long order_magic = exMQL.OrderGetInteger(ORDER_MAGIC);
+         if(order_magic != m_magic_number)
+         {
+            Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " magic=", order_magic, " (expected=", m_magic_number, ")");
             continue;
+         }
          
          // シンボルチェック
-         if(exMQL.OrderSymbol() != _Symbol)
+         string order_symbol = exMQL.OrderGetString(ORDER_SYMBOL);
+         if(order_symbol != _Symbol)
+         {
+            Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " symbol=", order_symbol, " (expected=", _Symbol, ")");
             continue;
+         }
          
          // ポジションタイプチェック（Buy or Sell）
-         int order_type = exMQL.OrderType();
-         if(order_type == OP_BUY || order_type == OP_SELL)
+         ENUM_ORDER_TYPE order_type = (ENUM_ORDER_TYPE)exMQL.OrderGetInteger(ORDER_TYPE);
+         if(order_type == ORDER_TYPE_BUY || order_type == ORDER_TYPE_SELL)
          {
+            Print("[Aegis-TRACE][Observation] HasPositions=TRUE");
             return true;  // ポジションあり
          }
       }
       
+      Print("[Aegis-TRACE][Observation] HasPositions=FALSE");
       return false;  // ポジションなし
    }
 };

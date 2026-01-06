@@ -60,7 +60,7 @@ private:
    //|   フェーズD以降で高度な収束ロジックに置き換え可能                   |
    //|   例: スプレッド考慮、リスク評価、複数候補の統合等                  |
    //-------------------------------------------------------------------
-   Action SelectByPriority(Action candidates[], int candidate_count)
+   Action SelectByPriority(Action &candidates[], int candidate_count)
    {
       // 候補がない場合は ACTION_NONE
       if(candidate_count == 0)
@@ -95,7 +95,7 @@ public:
    CDecisionArbiter()
    {
       m_decision_count = 0;
-      ArrayInitialize(m_decisions, NULL);
+      // ArrayInitialize不要（構造体配列）
    }
    
    //-------------------------------------------------------------------
@@ -141,6 +141,10 @@ public:
    //-------------------------------------------------------------------
    Action Decide(CLA_Data &data, ulong tick_id)
    {
+      // ★★★ トレースログ: 開始 ★★★
+      Print("[Aegis-TRACE][Arbiter] === Decide START ===");
+      Print("[Aegis-TRACE][Arbiter] Registered Decisions: ", m_decision_count);
+      
       // ========== ステップ1: 候補収集 ==========
       Action candidates[10];
       int valid_candidate_count = 0;
@@ -153,6 +157,9 @@ public:
          // 各判断ロジックから候補を取得
          Action candidate = m_decisions[i].GenerateActionCandidate(data, tick_id);
          
+         // ★★★ トレースログ: 候補取得 ★★★
+         Print("[Aegis-TRACE][Arbiter] Decision[", i, "] returned: ", candidate.type);
+         
          // 候補を配列に格納
          candidates[valid_candidate_count] = candidate;
          valid_candidate_count++;
@@ -161,6 +168,9 @@ public:
       // ========== ステップ2: 収束 ==========
       // フェーズC: 優先度ベースの単純な収束
       Action final_action = SelectByPriority(candidates, valid_candidate_count);
+      
+      // ★★★ トレースログ: 最終決定 ★★★
+      Print("[Aegis-TRACE][Arbiter] Final Action: ", final_action.type);
       
       // ========== ステップ3: 最終Action返却 ==========
       // ★ここが唯一の出口
