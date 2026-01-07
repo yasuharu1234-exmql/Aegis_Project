@@ -77,7 +77,12 @@ public:
       
       // ★Phase 5: 毎Tickログを削除
       // data.AddLog(FUNC_ID_PRICE_OBSERVER, tick_id, log_message);
-      
+      data.SetMarketData(
+         m_last_bid,
+         m_last_ask,
+         m_last_spread,
+         TimeCurrent()
+      );      
       return true;
    }
    

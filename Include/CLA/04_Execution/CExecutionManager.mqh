@@ -186,8 +186,27 @@ public:
                double tp         = action.tp;
                
                // 価格情報取得
+               double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+               double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
                int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
                double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+               
+               // ★★★ トレースログ: 価格妥当性確認 ★★★
+               Print("[Aegis-TRACE][Execution] === BuyStop配置前チェック ===");
+               Print("[Aegis-TRACE][Execution] Symbol: _Symbol=", _Symbol, " Symbol()=", Symbol());
+               Print("[Aegis-TRACE][Execution] ask=", ask, " bid=", bid, " point=", point, " digits=", digits);
+               Print("[Aegis-TRACE][Execution] buy_price=", buy_price, " sell_price=", sell_price);
+               Print("[Aegis-TRACE][Execution] lot=", lot, " sl=", sl, " tp=", tp);
+               
+               // 価格妥当性チェック
+               if(buy_price <= ask)
+               {
+                  Print("[Aegis-TRACE][Execution] ❌ 価格エラー: buy_price(", buy_price, ") <= ask(", ask, ")");
+               }
+               if(sell_price >= bid)
+               {
+                  Print("[Aegis-TRACE][Execution] ❌ 価格エラー: sell_price(", sell_price, ") >= bid(", bid, ")");
+               }
                
                // SL/TP を価格に変換
                double buy_sl  = (sl > 0) ? NormalizeDouble(buy_price - sl, digits) : 0;
@@ -206,9 +225,28 @@ public:
                request_buy.price  = buy_price;
                request_buy.sl     = buy_sl;
                request_buy.tp     = buy_tp;
+               request_buy.magic     = m_magic_number;        // ★追加
+               request_buy.deviation = m_slippage;            // ★追加
+               request_buy.type_time = ORDER_TIME_GTC;        // ★追加
+               request_buy.type_filling = ORDER_FILLING_RETURN; // ★追加
                request_buy.comment = "Aegis_OCO_Buy";
                
+               // ★★★ トレースログ: リクエスト内容 ★★★
+               Print("[Aegis-TRACE][Execution] BuyStop Request:");
+               Print("[Aegis-TRACE][Execution]   magic=", request_buy.magic);
+               Print("[Aegis-TRACE][Execution]   deviation=", request_buy.deviation);
+               Print("[Aegis-TRACE][Execution]   type_time=", request_buy.type_time);
+               Print("[Aegis-TRACE][Execution]   type_filling=", request_buy.type_filling);
+               
                bool buy_success = exMQL.OrderSend(request_buy, result_buy);
+               
+               // ★★★ トレースログ: 結果詳細 ★★★
+               Print("[Aegis-TRACE][Execution] BuyStop Result:");
+               Print("[Aegis-TRACE][Execution]   success=", buy_success);
+               Print("[Aegis-TRACE][Execution]   retcode=", result_buy.retcode);
+               Print("[Aegis-TRACE][Execution]   order=", result_buy.order);
+               Print("[Aegis-TRACE][Execution]   comment=", result_buy.comment);
+               Print("[Aegis-TRACE][Execution]   GetLastError()=", GetLastError());
                
                if(!buy_success)
                {
@@ -231,9 +269,28 @@ public:
                request_sell.price  = sell_price;
                request_sell.sl     = sell_sl;
                request_sell.tp     = sell_tp;
+               request_sell.magic     = m_magic_number;        // ★追加
+               request_sell.deviation = m_slippage;            // ★追加
+               request_sell.type_time = ORDER_TIME_GTC;        // ★追加
+               request_sell.type_filling = ORDER_FILLING_RETURN; // ★追加
                request_sell.comment = "Aegis_OCO_Sell";
                
+               // ★★★ トレースログ: リクエスト内容 ★★★
+               Print("[Aegis-TRACE][Execution] SellStop Request:");
+               Print("[Aegis-TRACE][Execution]   magic=", request_sell.magic);
+               Print("[Aegis-TRACE][Execution]   deviation=", request_sell.deviation);
+               Print("[Aegis-TRACE][Execution]   type_time=", request_sell.type_time);
+               Print("[Aegis-TRACE][Execution]   type_filling=", request_sell.type_filling);
+               
                bool sell_success = exMQL.OrderSend(request_sell, result_sell);
+               
+               // ★★★ トレースログ: 結果詳細 ★★★
+               Print("[Aegis-TRACE][Execution] SellStop Result:");
+               Print("[Aegis-TRACE][Execution]   success=", sell_success);
+               Print("[Aegis-TRACE][Execution]   retcode=", result_sell.retcode);
+               Print("[Aegis-TRACE][Execution]   order=", result_sell.order);
+               Print("[Aegis-TRACE][Execution]   comment=", result_sell.comment);
+               Print("[Aegis-TRACE][Execution]   GetLastError()=", GetLastError());
                
                if(!sell_success)
                {

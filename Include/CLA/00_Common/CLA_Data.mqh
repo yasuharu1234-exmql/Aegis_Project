@@ -366,6 +366,11 @@ public:
    //+------------------------------------------------------------------+
    void SetMarketData(double bid, double ask, double spread, datetime time)
    {
+/**/
+Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
+/**/
+
+
       m_current_bid = bid;
       m_current_ask = ask;
       m_current_spread = spread;

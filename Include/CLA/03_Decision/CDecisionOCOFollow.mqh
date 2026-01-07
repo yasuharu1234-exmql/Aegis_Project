@@ -144,6 +144,16 @@ public:
       double bid   = data.GetCurrentBid();
       double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
       int    digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+
+
+/*DEBUG*/
+Print("[Aegis-TRACE][Decision][FUNC_TOP]",
+      " ask=", ask,
+      " bid=", bid,
+      " point=", point,
+      " digits=", digits);
+/*DEBUG*/
+
       
       // ========== 状態確認 ==========
       ulong buy_ticket  = data.GetOCOBuyTicket();
@@ -179,7 +189,17 @@ public:
          action.buy_price  = new_buy_price;
          action.sell_price = new_sell_price;
          action.reason = "OCO_MODIFY: Price follow";
-         
+/*DEBUG*/
+Print("[Aegis-TRACE][Decision][MODIFY]",
+      " ask=", ask,
+      " bid=", bid,
+      " point=", point,
+      " digits=", digits,
+      " dist=", distance_points,
+      " new_buy_price=", new_buy_price,
+      " new_sell_price=", new_sell_price);
+/*DEBUG*/
+        
          // target_ticketは後回し（フェーズF-4では未使用）
          action.target_ticket = 0;
          
@@ -214,6 +234,21 @@ public:
          action.sl = data.GetOCOSLPoints() * point;
          action.tp = data.GetOCOTPPoints() * point;
          action.reason = "OCO_PLACE: Entry condition met";
+
+/*DEBUG*/
+Print("[Aegis-TRACE][Decision][PLACE]",
+      " ask=", ask,
+      " bid=", bid,
+      " dist=", distance_points,
+      " point=", point,
+      " digits=", digits,
+      " buy_price=", buy_price,
+      " sell_price=", sell_price,
+      " action.lot=", action.lot,
+      " action.sl=", action.sl,
+      " action.tp=", action.tp,
+      " action.reason=", action.reason);
+/*DEBUG*/
          
          Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_PLACE");
          return action;
