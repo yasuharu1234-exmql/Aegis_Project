@@ -49,17 +49,17 @@
 string EscapeCSV(string text)
 {
    // カンマ、改行、ダブルクォートを含む場合
-   if(StringFind(text, ",") >= 0 || 
-      StringFind(text, "\n") >= 0 || 
-      StringFind(text, "\"") >= 0)
+   if(StringFind(text, ",") >= 0 ||
+         StringFind(text, "\n") >= 0 ||
+         StringFind(text, "\"") >= 0)
    {
       // ダブルクォートをエスケープ（" → ""）
       StringReplace(text, "\"", "\"\"");
-      
+
       // 全体をダブルクォートで囲む
       return "\"" + text + "\"";
    }
-   
+
    return text;  // エスケープ不要
 }
 
@@ -73,34 +73,34 @@ private:
    // ========== ログ管理 ==========
    CFileLogger m_logger;
    bool        m_console_log_enabled;
-   
+
    // ========== メモリバッファ ==========
    string      m_log_buffer[];
    int         m_log_buffer_size;
    int         m_log_buffer_count;
-   
+
    // ========== Phase 6: 状態ログ専用 ==========
    int         m_state_log_handle;       // 状態ログ専用ファイルハンドル
    ulong       m_tick_counter;           // Tick番号カウンタ（簡易実装）
-   
+
    // ========== レイヤー状態管理 ==========
    ENUM_LAYER_STATUS m_layer_status[6];
-   
+
    // ========== 市場データ ==========
    double      m_current_bid;
    double      m_current_ask;
    double      m_current_spread;
    datetime    m_current_time;
-   
+
    // ========== 観測データ ==========
    double      m_rsi_value;
-   
+
    // ========== フェーズB追加: 追従型OCO観測データ ==========
    bool            m_obs_entry_clear;      // エントリー可能状態（約定前注文・ポジションなし）
-   
+
    // ========== Gatekeeper状態 ==========
    ENUM_GK_RESULT m_last_gk_result;
-   
+
    // ========== Execution状態管理（Phase 2追加） ==========
    ENUM_EXEC_STATE    m_exec_state;
    bool               m_exec_locked;
@@ -108,8 +108,8 @@ private:
    ENUM_EXEC_RESULT   m_exec_last_result;
    string             m_exec_last_reason;
    ulong              m_exec_last_tick_id;
-   
-   
+
+
    // ========== OCO注文パラメータ（Sprint A追加） ==========
    ulong              m_oco_buy_ticket;        // BuyStop注文チケット
    ulong              m_oco_sell_ticket;       // SellStop注文チケット
@@ -120,7 +120,7 @@ private:
    double             m_oco_tp_points;         // TP（ポイント）
    int                m_oco_magic;             // マジックナンバー
    double             m_oco_distance_points;   // OCO配置距離（ポイント）
-   
+
    // ========== 追従管理（Phase 4追加） ==========
    datetime           m_last_order_action_time; // 前回注文配置または変更成功時刻
 public:
@@ -133,25 +133,25 @@ public:
       m_log_buffer_size = 10000;
       m_log_buffer_count = 0;
       ArrayResize(m_log_buffer, m_log_buffer_size);
-      
+
       // ★Phase 6: 状態ログ初期化
       m_state_log_handle = INVALID_HANDLE;
       m_tick_counter = 0;
-      
+
       for(int i = 0; i < 6; i++)
       {
          m_layer_status[i] = STATUS_NONE;
       }
-      
+
       m_current_bid = 0.0;
       m_current_ask = 0.0;
       m_current_spread = 0.0;
       m_current_time = 0;
       m_rsi_value = 0.0;
-      
+
       m_last_gk_result = GK_PASS;
       m_obs_entry_clear = false;  // フェーズB: 追従型OCO観測初期化
-      
+
       // ★Phase 2: Execution初期化
       m_exec_state = EXEC_STATE_IDLE;
       m_exec_locked = false;
@@ -159,7 +159,7 @@ public:
       m_exec_last_result = EXEC_RESULT_NONE;
       m_exec_last_reason = "";
       m_exec_last_tick_id = 0;
-      
+
       // ★Sprint A: OCO注文パラメータ初期化
       m_oco_buy_ticket = 0;
       m_oco_sell_ticket = 0;
@@ -170,11 +170,11 @@ public:
       m_oco_tp_points = 0.0;
       m_oco_magic = 0;
       m_oco_distance_points = 0.0;
-      
+
       // ★Phase 4: 追従管理初期化
       m_last_order_action_time = 0;
    }
-   
+
    //+------------------------------------------------------------------+
    //| 初期化                                                           |
    //| Phase 6: 状態ログ専用CSVファイルを作成                            |
@@ -186,7 +186,7 @@ public:
          Print("[エラー] ファイルロガー初期化失敗");
          return false;
       }
-      
+
       // ★Phase 6: 状態ログ用CSVファイル初期化
       datetime now = TimeCurrent();
       MqlDateTime dt;
@@ -198,33 +198,33 @@ public:
                                           dt.hour,
                                           dt.min,
                                           dt.sec);
-      
+
       string state_log_filename = "StateLog_" + timestamp_str + ".csv";
       string state_log_path = "Aegis_Logs\\" + state_log_filename;
-      
+
       // FILE_ANSI: UTF-8ではなくANSI（日本語対応のため）
       // FILE_WRITE: 書き込みモード
       // FILE_CSV: CSV形式
-      m_state_log_handle = FileOpen(state_log_path, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
-      
+      m_state_log_handle = FileOpen(state_log_path, FILE_WRITE | FILE_CSV | FILE_ANSI, ',');
+
       if(m_state_log_handle == INVALID_HANDLE)
       {
          Print("[エラー] 状態ログファイル作成失敗: ", state_log_path);
          Print("   LastError: ", GetLastError());
          return false;
       }
-      
+
       // CSVヘッダー行を書き込み
       string header = "Time_ms,TickSeq,Level,LogID,LogName,Param1,Param2,Param3,Param4,Message\n";
       FileWriteString(m_state_log_handle, header);
       FileFlush(m_state_log_handle);  // ★クラッシュ対策
-      
+
       Print("[状態ログ] ファイル作成完了: ", state_log_path);
-      
+
       AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data初期化完了");
       return true;
    }
-   
+
    //+------------------------------------------------------------------+
    //| 終了処理                                                         |
    //| Phase 6: 状態ログファイルをクローズ                               |
@@ -232,7 +232,7 @@ public:
    void Deinit()
    {
       AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data終了処理", true);
-      
+
       // ★Phase 6: 状態ログファイルクローズ
       if(m_state_log_handle != INVALID_HANDLE)
       {
@@ -241,7 +241,7 @@ public:
          Print("[状態ログ] ファイルクローズ完了");
       }
    }
-   
+
    //+------------------------------------------------------------------+
    //| コンソールログ有効/無効設定                                        |
    //+------------------------------------------------------------------+
@@ -249,17 +249,17 @@ public:
    {
       m_console_log_enabled = enabled;
    }
-   
+
    //+------------------------------------------------------------------+
    //| ログ追加（既存）                                                 |
    //+------------------------------------------------------------------+
    void AddLog(ENUM_FUNCTION_ID func_id, ulong tick_id, string message, bool important = false)
    {
       string level = important ? "IMPORTANT" : "DEBUG";
-      
+
       if(m_log_buffer_count < m_log_buffer_size)
       {
-         string timestamp = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS);
+         string timestamp = TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS);
          string log_line = StringFormat("%s,Tick#%llu,Func#%d,%s",
                                         timestamp,
                                         tick_id,
@@ -268,18 +268,18 @@ public:
          m_log_buffer[m_log_buffer_count] = log_line;
          m_log_buffer_count++;
       }
-      
+
       if(important)
       {
          m_logger.Log(func_id, LOG_LEVEL_INFO, 0, 0);
       }
-      
+
       if(m_console_log_enabled)
       {
          PrintFormat("[%s] Tick#%llu Func#%d: %s", level, tick_id, func_id, message);
       }
    }
-   
+
    //+------------------------------------------------------------------+
    //| 拡張ログ記録（Phase 6 Task 3）                                    |
    //| [引数]                                                            |
@@ -307,20 +307,20 @@ public:
       // 状態ログ無効時は何もしない
       if(!InpEnableStateLog)
          return;
-      
+
       // ログレベル決定
       uchar level = (uchar)(important ? LOG_LEVEL_WARNING : LOG_LEVEL_INFO);
-      
+
       // パラメータを数値に変換（空文字列は0）
       int p1 = (param1 != "") ? (int)StringToInteger(param1) : 0;
       int p2 = (param2 != "") ? (int)StringToInteger(param2) : 0;
       int p3 = (param3 != "") ? (int)StringToInteger(param3) : 0;
       int p4 = (param4 != "") ? (int)StringToInteger(param4) : 0;
-      
+
       // CFileLoggerの拡張版Log()を呼び出し
       m_logger.Log(log_id, level, p1, p2, p3, p4, message);
    }
-   
+
    //+------------------------------------------------------------------+
    //| 全ログをファイルに出力                                            |
    //+------------------------------------------------------------------+
@@ -329,15 +329,15 @@ public:
       for(int i = 0; i < m_log_buffer_count; i++)
       {
       }
-      
+
       string flush_msg = StringFormat("全ログ出力完了: %d件", m_log_buffer_count);
-      
+
       if(m_console_log_enabled)
       {
          Print("[CLA_Data] ", flush_msg);
       }
    }
-   
+
    //+------------------------------------------------------------------+
    //| レイヤー状態設定                                                  |
    //+------------------------------------------------------------------+
@@ -348,7 +348,7 @@ public:
          m_layer_status[layer_num] = status;
       }
    }
-   
+
    //+------------------------------------------------------------------+
    //| レイヤー状態取得                                                  |
    //+------------------------------------------------------------------+
@@ -360,15 +360,15 @@ public:
       }
       return STATUS_NONE;
    }
-   
+
    //+------------------------------------------------------------------+
    //| 市場データ設定                                                    |
    //+------------------------------------------------------------------+
    void SetMarketData(double bid, double ask, double spread, datetime time)
    {
-/**/
-Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
-/**/
+      /**/
+      Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
+      /**/
 
 
       m_current_bid = bid;
@@ -376,7 +376,7 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
       m_current_spread = spread;
       m_current_time = time;
    }
-   
+
    //+------------------------------------------------------------------+
    //| RSI値設定                                                        |
    //+------------------------------------------------------------------+
@@ -384,7 +384,7 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
    {
       m_rsi_value = rsi;
    }
-   
+
    //+------------------------------------------------------------------+
    //| RSI値取得                                                        |
    //+------------------------------------------------------------------+
@@ -392,11 +392,11 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
    {
       return m_rsi_value;
    }
-   
+
    //+------------------------------------------------------------------+
    //| フェーズB追加: 追従型OCO観測データの設定/取得                       |
    //+------------------------------------------------------------------+
-   
+
    //+------------------------------------------------------------------+
    //| エントリー可能状態設定                                             |
    //| [引数]                                                            |
@@ -406,7 +406,7 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
    {
       m_obs_entry_clear = is_clear;
    }
-   
+
    //+------------------------------------------------------------------+
    //| エントリー可能状態取得                                             |
    //| [戻り値]                                                          |
@@ -417,22 +417,34 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
    {
       return m_obs_entry_clear;
    }
-   
+
    //+------------------------------------------------------------------+
    //| 市場データ取得                                                    |
    //+------------------------------------------------------------------+
-   double GetCurrentBid() const { return m_current_bid; }
-   double GetCurrentAsk() const { return m_current_ask; }
-   double GetCurrentSpread() const { return m_current_spread; }
-   datetime GetCurrentTime() const { return m_current_time; }
-   
+   double GetCurrentBid() const
+   {
+      return m_current_bid;
+   }
+   double GetCurrentAsk() const
+   {
+      return m_current_ask;
+   }
+   double GetCurrentSpread() const
+   {
+      return m_current_spread;
+   }
+   datetime GetCurrentTime() const
+   {
+      return m_current_time;
+   }
+
    //+------------------------------------------------------------------+
    //| Gatekeeper結果設定                                                |
    //+------------------------------------------------------------------+
    void SetGatekeeperResult(ENUM_GK_RESULT result, ulong tick_id = 0)
    {
       m_last_gk_result = result;
-      
+
       if(result != GK_PASS)
       {
          string reason_text = GetGKReasonText(result);
@@ -440,7 +452,7 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
          AddLog(FUNC_ID_GATEKEEPER, tick_id, log_msg, true);
       }
    }
-   
+
    //+------------------------------------------------------------------+
    //| Gatekeeper結果取得                                                |
    //+------------------------------------------------------------------+
@@ -448,25 +460,25 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
    {
       return m_last_gk_result;
    }
-   
+
    // ========== Phase 2: Execution状態管理メソッド ==========
-   
+
    //+------------------------------------------------------------------+
    //| Execution状態取得                                                |
    //+------------------------------------------------------------------+
-   ENUM_EXEC_STATE GetExecState() const 
-   { 
-      return m_exec_state; 
+   ENUM_EXEC_STATE GetExecState() const
+   {
+      return m_exec_state;
    }
-   
+
    //+------------------------------------------------------------------+
    //| Executionロック状態取得                                          |
    //+------------------------------------------------------------------+
-   bool IsExecLocked() const 
-   { 
-      return m_exec_locked; 
+   bool IsExecLocked() const
+   {
+      return m_exec_locked;
    }
-   
+
    //+------------------------------------------------------------------+
    //| Execution状態設定（ログ自動記録）★修正版                          |
    //+------------------------------------------------------------------+
@@ -476,7 +488,7 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
       ENUM_EXEC_STATE prev = m_exec_state;
       m_exec_state = state;
       m_exec_last_tick_id = tick_id;
-      
+
       // 状態変更は重要ログとして記録
       string log_msg = StringFormat("Execution状態変更: %s → %s (%s)",
                                     EnumToString(prev),  // ★修正: 変更前
@@ -484,20 +496,20 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
                                     reason != "" ? reason : "理由なし");
       AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, log_msg, true);
    }
-   
+
    //+------------------------------------------------------------------+
    //| Executionロック設定                                              |
    //+------------------------------------------------------------------+
    void SetExecLock(bool locked, ulong tick_id)
    {
       m_exec_locked = locked;
-      
+
       if(locked)
       {
          AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, "⚠️ Executionロック設定", true);
       }
    }
-   
+
    //+------------------------------------------------------------------+
    //| Execution結果記録                                                |
    //+------------------------------------------------------------------+
@@ -505,110 +517,170 @@ Print("[Aegis-TRACE][CLA_Data][CALL SetMarketData]");
    {
       m_exec_last_result = result;
       m_exec_last_reason = reason;
-      
+
       bool is_important = (result != EXEC_RESULT_SUCCESS);
       string log_msg = StringFormat("Execution結果: %s - %s",
                                     EnumToString(result),
                                     reason);
       AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, log_msg, is_important);
    }
-   
+
    //+------------------------------------------------------------------+
    //| Execution操作要求設定                                            |
    //+------------------------------------------------------------------+
    void SetExecRequest(ENUM_EXEC_REQUEST request, ulong tick_id)
    {
       m_exec_current_request = request;
-      
+
       if(request != EXEC_REQ_NONE)
       {
          string log_msg = StringFormat("Execution要求受付: %s", EnumToString(request));
          AddLog(FUNC_ID_ORDER_GENERATOR, tick_id, log_msg, false);
       }
    }
-   
+
    //+------------------------------------------------------------------+
    //| 現在の操作要求取得                                                |
    //+------------------------------------------------------------------+
-   ENUM_EXEC_REQUEST GetExecRequest() const 
-   { 
-      return m_exec_current_request; 
+   ENUM_EXEC_REQUEST GetExecRequest() const
+   {
+      return m_exec_current_request;
    }
-   
+
    //+------------------------------------------------------------------+
    //| 最後の実行結果取得                                                |
    //+------------------------------------------------------------------+
-   ENUM_EXEC_RESULT GetExecLastResult() const 
-   { 
-      return m_exec_last_result; 
+   ENUM_EXEC_RESULT GetExecLastResult() const
+   {
+      return m_exec_last_result;
    }
-   
-   string GetExecLastReason() const 
-   { 
-      return m_exec_last_reason; 
+
+   string GetExecLastReason() const
+   {
+      return m_exec_last_reason;
    }
-   
+
    // ========== OCO注文パラメータ getter/setter（Sprint A追加） ==========
-   
+
    //+------------------------------------------------------------------+
    //| OCO BuyStop チケット設定/取得                                     |
    //+------------------------------------------------------------------+
-   void SetOCOBuyTicket(ulong ticket) { m_oco_buy_ticket = ticket; }
-   ulong GetOCOBuyTicket() const { return m_oco_buy_ticket; }
-   
+   void SetOCOBuyTicket(ulong ticket)
+   {
+      m_oco_buy_ticket = ticket;
+   }
+   ulong GetOCOBuyTicket() const
+   {
+      return m_oco_buy_ticket;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO SellStop チケット設定/取得                                    |
    //+------------------------------------------------------------------+
-   void SetOCOSellTicket(ulong ticket) { m_oco_sell_ticket = ticket; }
-   ulong GetOCOSellTicket() const { return m_oco_sell_ticket; }
-   
+   void SetOCOSellTicket(ulong ticket)
+   {
+      m_oco_sell_ticket = ticket;
+   }
+   ulong GetOCOSellTicket() const
+   {
+      return m_oco_sell_ticket;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO BuyStop 価格設定/取得                                         |
    //+------------------------------------------------------------------+
-   void SetOCOBuyPrice(double price) { m_oco_buy_price = price; }
-   double GetOCOBuyPrice() const { return m_oco_buy_price; }
-   
+   void SetOCOBuyPrice(double price)
+   {
+      m_oco_buy_price = price;
+   }
+   double GetOCOBuyPrice() const
+   {
+      return m_oco_buy_price;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO SellStop 価格設定/取得                                        |
    //+------------------------------------------------------------------+
-   void SetOCOSellPrice(double price) { m_oco_sell_price = price; }
-   double GetOCOSellPrice() const { return m_oco_sell_price; }
-   
+   void SetOCOSellPrice(double price)
+   {
+      m_oco_sell_price = price;
+   }
+   double GetOCOSellPrice() const
+   {
+      return m_oco_sell_price;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO ロットサイズ設定/取得                                         |
    //+------------------------------------------------------------------+
-   void SetOCOLot(double lot) { m_oco_lot = lot; }
-   double GetOCOLot() const { return m_oco_lot; }
-   
+   void SetOCOLot(double lot)
+   {
+      m_oco_lot = lot;
+   }
+   double GetOCOLot() const
+   {
+      return m_oco_lot;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO SL(ポイント)設定/取得                                         |
    //+------------------------------------------------------------------+
-   void SetOCOSLPoints(double points) { m_oco_sl_points = points; }
-   double GetOCOSLPoints() const { return m_oco_sl_points; }
-   
+   void SetOCOSLPoints(double points)
+   {
+      m_oco_sl_points = points;
+   }
+   double GetOCOSLPoints() const
+   {
+      return m_oco_sl_points;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO TP(ポイント)設定/取得                                         |
    //+------------------------------------------------------------------+
-   void SetOCOTPPoints(double points) { m_oco_tp_points = points; }
-   double GetOCOTPPoints() const { return m_oco_tp_points; }
-   
+   void SetOCOTPPoints(double points)
+   {
+      m_oco_tp_points = points;
+   }
+   double GetOCOTPPoints() const
+   {
+      return m_oco_tp_points;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO マジックナンバー設定/取得                                      |
    //+------------------------------------------------------------------+
-   void SetOCOMagic(int magic) { m_oco_magic = magic; }
-   int GetOCOMagic() const { return m_oco_magic; }
-   
+   void SetOCOMagic(int magic)
+   {
+      m_oco_magic = magic;
+   }
+   int GetOCOMagic() const
+   {
+      return m_oco_magic;
+   }
+
    //+------------------------------------------------------------------+
    //| OCO 配置距離(ポイント)設定/取得                                    |
    //+------------------------------------------------------------------+
-   void SetOCODistancePoints(double points) { m_oco_distance_points = points; }
-   double GetOCODistancePoints() const { return m_oco_distance_points; }
-   
+   void SetOCODistancePoints(double points)
+   {
+      m_oco_distance_points = points;
+   }
+   double GetOCODistancePoints() const
+   {
+      return m_oco_distance_points;
+   }
+
    //+------------------------------------------------------------------+
    //| 追従管理（Phase 4追加）                                            |
    //+------------------------------------------------------------------+
-   void SetLastOrderActionTime(datetime time) { m_last_order_action_time = time; }
-   datetime GetLastOrderActionTime() const { return m_last_order_action_time; }
+   void SetLastOrderActionTime(datetime time)
+   {
+      m_last_order_action_time = time;
+   }
+   datetime GetLastOrderActionTime() const
+   {
+      return m_last_order_action_time;
+   }
 };
 
 //+------------------------------------------------------------------+
@@ -623,9 +695,9 @@ void TestAddLogEx()
       Print("[テスト失敗] CLA_Data初期化エラー");
       return;
    }
-   
+
    Print("========== Phase 6 テスト開始 ==========");
-   
+
    // テストケース1: チケット番号 + 価格
    data.AddLogEx(
       LOG_ID_OCO_PLACE,
@@ -638,7 +710,7 @@ void TestAddLogEx()
       false
    );
    Print("[テスト1] OCO_PLACE ログ出力完了");
-   
+
    // テストケース2: カンマ・引用符を含むメッセージ
    data.AddLogEx(
       LOG_ID_MODIFY_FAIL,
@@ -651,7 +723,7 @@ void TestAddLogEx()
       true
    );
    Print("[テスト2] CSVエスケープテスト完了");
-   
+
    // テストケース3: 空パラメータ
    data.AddLogEx(
       LOG_ID_DECISION_SKIP,
@@ -664,7 +736,7 @@ void TestAddLogEx()
       false
    );
    Print("[テスト3] 空パラメータテスト完了");
-   
+
    // テストケース4: 改行を含むメッセージ
    data.AddLogEx(
       LOG_ID_TRAIL_TRIGGER,
@@ -677,7 +749,7 @@ void TestAddLogEx()
       false
    );
    Print("[テスト4] 改行エスケープテスト完了");
-   
+
    data.Deinit();
    Print("========== Phase 6 テスト完了 ==========");
    Print("CSVファイルを確認してください: Aegis_Logs\\StateLog_*.csv");

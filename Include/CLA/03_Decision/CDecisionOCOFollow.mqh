@@ -45,12 +45,12 @@ public:
    //| [引数]                                                            |
    //|   priority : 優先度（デフォルト100）                                |
    //-------------------------------------------------------------------
-   CDecisionOCOFollow(int priority = 100) 
+   CDecisionOCOFollow(int priority = 100)
       : CDecisionBase(FUNC_ID_LOGIC_RSI_SIMPLE, priority)
    {
       m_last_entry_clear = false;
    }
-   
+
    //-------------------------------------------------------------------
    //| 初期化メソッド                                                     |
    //-------------------------------------------------------------------
@@ -61,13 +61,13 @@ public:
          Print("[OCOFollow判断] 初期化失敗");
          return false;
       }
-      
+
       m_last_entry_clear = false;
-      
+
       Print("[OCOFollow判断] 初期化成功（フェーズB: 観測データ受信確認のみ）");
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 終了処理メソッド                                                   |
    //-------------------------------------------------------------------
@@ -76,7 +76,7 @@ public:
       Print("[OCOFollow判断] 終了処理");
       CDecisionBase::Deinit();
    }
-   
+
    //-------------------------------------------------------------------
    //| 更新メソッド（フェーズB実装: 受信確認のみ）                         |
    //| [引数]                                                            |
@@ -100,22 +100,22 @@ public:
    {
       // ★フェーズB: CLA_Dataから観測結果を取得
       bool entry_clear = data.GetObs_EntryClear();
-      
+
       // 状態保存（フェーズBでは使用しない）
       m_last_entry_clear = entry_clear;
-      
+
       // ★フェーズB: 受信確認のみ（ログ出力なし、Signal生成なし）
       // この時点では何もしない
-      
+
       // フェーズC以降で実装予定:
       // - if(entry_clear) { ... Action生成 ... }
       // - Decision Arbiterへの登録
       // - ログ出力
-      
+
       return true;
    }
-   
-   
+
+
    //-------------------------------------------------------------------
    //| Action候補生成（フェーズF-2実装: オーバーライド）                   |
    //| [引数]                                                            |
@@ -138,7 +138,7 @@ public:
    virtual Action GenerateActionCandidate(CLA_Data &data, ulong tick_id) override
    {
       Action action;  // コンストラクタで初期化済み（全て0/空）
-      
+
       // ========== 共通: 価格情報取得 ==========
       double ask   = data.GetCurrentAsk();
       double bid   = data.GetCurrentBid();
@@ -146,26 +146,26 @@ public:
       int    digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
 
 
-/*DEBUG*/
-Print("[Aegis-TRACE][Decision][FUNC_TOP]",
-      " ask=", ask,
-      " bid=", bid,
-      " point=", point,
-      " digits=", digits);
-/*DEBUG*/
+      /*DEBUG*/
+      Print("[Aegis-TRACE][Decision][FUNC_TOP]",
+            " ask=", ask,
+            " bid=", bid,
+            " point=", point,
+            " digits=", digits);
+      /*DEBUG*/
 
-      
+
       // ========== 状態確認 ==========
       ulong buy_ticket  = data.GetOCOBuyTicket();
       ulong sell_ticket = data.GetOCOSellTicket();
       bool has_oco_orders = (buy_ticket > 0 || sell_ticket > 0);
       bool has_position   = (PositionsTotal() > 0);
-      
+
       // ★★★ トレースログ: 関数開始 ★★★
       Print("[Aegis-TRACE][Decision] === GenerateActionCandidate START ===");
       Print("[Aegis-TRACE][Decision] buy_ticket=", buy_ticket, " sell_ticket=", sell_ticket);
       Print("[Aegis-TRACE][Decision] has_oco_orders=", has_oco_orders, " has_position=", has_position);
-      
+
       // ========== 優先順位1: CANCEL（ポジション存在） ==========
       if(has_position)
       {
@@ -174,59 +174,59 @@ Print("[Aegis-TRACE][Decision][FUNC_TOP]",
          Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_CANCEL");
          return action;
       }
-      
+
       // ========== 優先順位2: MODIFY（OCO注文存在） ==========
       if(has_oco_orders)
       {
          // OCO配置距離を取得
          double distance_points = data.GetOCODistancePoints();
-         
+
          // 新しい価格を計算
          double new_buy_price  = NormalizeDouble(ask + distance_points * point, digits);
          double new_sell_price = NormalizeDouble(bid - distance_points * point, digits);
-         
+
          action.type = ACTION_OCO_MODIFY;
          action.buy_price  = new_buy_price;
          action.sell_price = new_sell_price;
          action.reason = "OCO_MODIFY: Price follow";
-/*DEBUG*/
-Print("[Aegis-TRACE][Decision][MODIFY]",
-      " ask=", ask,
-      " bid=", bid,
-      " point=", point,
-      " digits=", digits,
-      " dist=", distance_points,
-      " new_buy_price=", new_buy_price,
-      " new_sell_price=", new_sell_price);
-/*DEBUG*/
-        
+         /*DEBUG*/
+         Print("[Aegis-TRACE][Decision][MODIFY]",
+               " ask=", ask,
+               " bid=", bid,
+               " point=", point,
+               " digits=", digits,
+               " dist=", distance_points,
+               " new_buy_price=", new_buy_price,
+               " new_sell_price=", new_sell_price);
+         /*DEBUG*/
+
          // target_ticketは後回し（フェーズF-4では未使用）
          action.target_ticket = 0;
-         
+
          Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_MODIFY");
          return action;
       }
-      
+
       // ========== 優先順位3: PLACE（エントリー可能） ==========
       bool entry_clear = data.GetObs_EntryClear();
-      
+
       // ★★★ トレースログ: entry_clear判定 ★★★
       Print("[Aegis-TRACE][Decision] entry_clear=", entry_clear);
-      
+
       if(entry_clear)
       {
          // OCO配置距離を取得
          double distance_points = data.GetOCODistancePoints();
-         
+
          // BuyStop価格 = Ask + 距離
          double buy_price  = NormalizeDouble(ask + distance_points * point, digits);
-         
+
          // SellStop価格 = Bid - 距離
          double sell_price = NormalizeDouble(bid - distance_points * point, digits);
-         
+
          // ★★★ トレースログ: ACTION_OCO_PLACE生成 ★★★
          Print("[Aegis-TRACE][Decision] ACTION_OCO_PLACE: buy_price=", buy_price, " sell_price=", sell_price, " lot=", data.GetOCOLot());
-         
+
          action.type = ACTION_OCO_PLACE;
          action.buy_price  = buy_price;
          action.sell_price = sell_price;
@@ -235,33 +235,33 @@ Print("[Aegis-TRACE][Decision][MODIFY]",
          action.tp = data.GetOCOTPPoints() * point;
          action.reason = "OCO_PLACE: Entry condition met";
 
-/*DEBUG*/
-Print("[Aegis-TRACE][Decision][PLACE]",
-      " ask=", ask,
-      " bid=", bid,
-      " dist=", distance_points,
-      " point=", point,
-      " digits=", digits,
-      " buy_price=", buy_price,
-      " sell_price=", sell_price,
-      " action.lot=", action.lot,
-      " action.sl=", action.sl,
-      " action.tp=", action.tp,
-      " action.reason=", action.reason);
-/*DEBUG*/
-         
+         /*DEBUG*/
+         Print("[Aegis-TRACE][Decision][PLACE]",
+               " ask=", ask,
+               " bid=", bid,
+               " dist=", distance_points,
+               " point=", point,
+               " digits=", digits,
+               " buy_price=", buy_price,
+               " sell_price=", sell_price,
+               " action.lot=", action.lot,
+               " action.sl=", action.sl,
+               " action.tp=", action.tp,
+               " action.reason=", action.reason);
+         /*DEBUG*/
+
          Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_PLACE");
          return action;
       }
-      
+
       // ========== 優先順位4: NONE（何もしない） ==========
       action.type = ACTION_NONE;
       action.reason = "No action required";
       Print("[Aegis-TRACE][Decision] return Action=ACTION_NONE (entry_clear=false)");
-      
+
       return action;
    }
-   
+
    //-------------------------------------------------------------------
    //| 最後に取得したエントリー可能状態を取得                               |
    //| [戻り値]                                                          |

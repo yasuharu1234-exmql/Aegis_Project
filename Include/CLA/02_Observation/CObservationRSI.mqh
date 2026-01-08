@@ -42,27 +42,27 @@ public:
       m_overbought_level = 70.0;
       m_oversold_level = 30.0;
    }
-   
+
    //-------------------------------------------------------------------
    //| 初期化メソッド                                                     |
    //-------------------------------------------------------------------
    virtual bool Init() override
    {
       if(!CObservationBase::Init()) return false;
-      
+
       // RSIインジケータハンドル作成
       m_handle = exMQL.iRSI(_Symbol, PERIOD_CURRENT, m_period, PRICE_CLOSE);
-      
+
       if(m_handle == INVALID_HANDLE)
       {
          Print("[RSI観測] ハンドル作成失敗");
          return false;
       }
-      
+
       Print("[RSI観測] 初期化成功 (期間:", m_period, ")");
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 終了処理メソッド                                                   |
    //-------------------------------------------------------------------
@@ -75,23 +75,23 @@ public:
       }
       CObservationBase::Deinit();
    }
-   
+
    //-------------------------------------------------------------------
    //| 更新メソッド（Phase 5: ログ削除）                                  |
    //-------------------------------------------------------------------
    virtual bool Update(CLA_Data &data, ulong tick_id) override
    {
       if(m_handle == INVALID_HANDLE) return false;
-      
+
       double rsi_buffer[];
       ArraySetAsSeries(rsi_buffer, true);
-      
+
       // EXMQLを使ってバッファをコピー
       if(exMQL.CopyBuffer(m_handle, 0, 0, 1, rsi_buffer) <= 0) return false;
-      
+
       m_last_value = rsi_buffer[0];
-      
-      
+
+
       // ★フェーズB追加: CLA_DataにRSI値を格納（観測層→判断層のデータ受け渡し）
       data.SetRSIValue(m_last_value);
       // ★Phase 5: 毎Tickログを削除
@@ -110,14 +110,14 @@ public:
       {
          status = "[中立]";
       }
-      
+
       string log_message = StringFormat("RSI(%d): %.1f %s", m_period, m_last_value, status);
       data.AddLog(FUNC_ID_TECHNICAL_RSI, tick_id, log_message);
       */
-      
+
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 最後のRSI値を取得                                                 |
    //-------------------------------------------------------------------
@@ -125,7 +125,7 @@ public:
    {
       return m_last_value;
    }
-   
+
    //-------------------------------------------------------------------
    //| 買われすぎレベルを取得                                             |
    //-------------------------------------------------------------------
@@ -133,7 +133,7 @@ public:
    {
       return m_overbought_level;
    }
-   
+
    //-------------------------------------------------------------------
    //| 売られすぎレベルを取得                                             |
    //-------------------------------------------------------------------
@@ -142,3 +142,4 @@ public:
       return m_oversold_level;
    }
 };
+//+------------------------------------------------------------------+

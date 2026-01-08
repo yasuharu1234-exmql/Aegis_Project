@@ -49,7 +49,7 @@ class CDecisionArbiter
 private:
    CDecisionBase* m_decisions[10];  // 判断ロジック配列（最大10個）
    int            m_decision_count;  // 登録済み判断ロジック数
-   
+
    //-------------------------------------------------------------------
    //| フェーズC: 単純な収束ロジック                                       |
    //| [Strategy]                                                        |
@@ -69,11 +69,11 @@ private:
          none_action.type = ACTION_NONE;
          return none_action;
       }
-      
+
       // 最初の候補をベースラインとする
       int best_index = 0;
       int best_priority = m_decisions[0].GetPriority();
-      
+
       // 優先度が最も高い候補を探索
       for(int i = 1; i < candidate_count; i++)
       {
@@ -84,7 +84,7 @@ private:
             best_priority = priority;
          }
       }
-      
+
       return candidates[best_index];
    }
 
@@ -97,7 +97,7 @@ public:
       m_decision_count = 0;
       // ArrayInitialize不要（構造体配列）
    }
-   
+
    //-------------------------------------------------------------------
    //| 判断ロジックを登録                                                 |
    //| [引数]                                                            |
@@ -113,14 +113,14 @@ public:
          Print("⚠️ [DecisionArbiter] 判断ロジック登録失敗: 配列が満杯");
          return false;
       }
-      
+
       m_decisions[m_decision_count] = GetPointer(decision);
       m_decision_count++;
-      
+
       Print("✅ [DecisionArbiter] 判断ロジック登録: ", m_decision_count, "個目");
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 最終Action決定（唯一の出口）                                       |
    //| [引数]                                                            |
@@ -144,40 +144,40 @@ public:
       // ★★★ トレースログ: 開始 ★★★
       Print("[Aegis-TRACE][Arbiter] === Decide START ===");
       Print("[Aegis-TRACE][Arbiter] Registered Decisions: ", m_decision_count);
-      
+
       // ========== ステップ1: 候補収集 ==========
       Action candidates[10];
       int valid_candidate_count = 0;
-      
+
       for(int i = 0; i < m_decision_count; i++)
       {
          if(m_decisions[i] == NULL)
             continue;
-         
+
          // 各判断ロジックから候補を取得
          Action candidate = m_decisions[i].GenerateActionCandidate(data, tick_id);
-         
+
          // ★★★ トレースログ: 候補取得 ★★★
          Print("[Aegis-TRACE][Arbiter] Decision[", i, "] returned: ", candidate.type);
-         
+
          // 候補を配列に格納
          candidates[valid_candidate_count] = candidate;
          valid_candidate_count++;
       }
-      
+
       // ========== ステップ2: 収束 ==========
       // フェーズC: 優先度ベースの単純な収束
       Action final_action = SelectByPriority(candidates, valid_candidate_count);
-      
+
       // ★★★ トレースログ: 最終決定 ★★★
       Print("[Aegis-TRACE][Arbiter] Final Action: ", final_action.type);
-      
+
       // ========== ステップ3: 最終Action返却 ==========
       // ★ここが唯一の出口
       // ★どんな経路を通っても、必ず1つのActionが返る
       return final_action;
    }
-   
+
    //-------------------------------------------------------------------
    //| 登録済み判断ロジック数を取得                                        |
    //-------------------------------------------------------------------

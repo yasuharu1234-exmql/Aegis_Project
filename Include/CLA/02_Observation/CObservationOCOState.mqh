@@ -48,18 +48,18 @@ public:
       m_magic_number = magic;
       m_last_state = false;
    }
-   
+
    //-------------------------------------------------------------------
    //| 初期化メソッド                                                     |
    //-------------------------------------------------------------------
    virtual bool Init() override
    {
       if(!CObservationBase::Init()) return false;
-      
+
       Print("[OCO状態観測] 初期化成功 (Magic: ", m_magic_number, ")");
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 終了処理メソッド                                                   |
    //-------------------------------------------------------------------
@@ -68,7 +68,7 @@ public:
       Print("[OCO状態観測] 終了処理");
       CObservationBase::Deinit();
    }
-   
+
    //-------------------------------------------------------------------
    //| 更新メソッド（フェーズB実装）                                       |
    //| [引数]                                                            |
@@ -90,22 +90,22 @@ public:
    {
       // 約定前注文の有無をチェック
       bool has_pending = HasPendingOrders();
-      
+
       // ポジションの有無をチェック
       bool has_position = HasPositions();
-      
+
       // エントリー可能判定（両方なければtrue）
       bool is_entry_clear = !has_pending && !has_position;
-      
+
       // ★フェーズB: CLA_Dataに観測結果を格納
       data.SetObs_EntryClear(is_entry_clear);
-      
+
       // 状態保存
       m_last_state = is_entry_clear;
-      
+
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 最後の観測結果を取得                                                |
    //-------------------------------------------------------------------
@@ -113,7 +113,7 @@ public:
    {
       return m_last_state;
    }
-   
+
 private:
    //-------------------------------------------------------------------
    //| 約定前注文の有無をチェック                                          |
@@ -124,21 +124,21 @@ private:
    bool HasPendingOrders()
    {
       int total = OrdersTotal();
-      
+
       // ★★★ トレースログ: 検索開始 ★★★
       Print("[Aegis-TRACE][Observation] HasPendingOrders: OrdersTotal()=", total);
-      
+
       for(int i = 0; i < total; i++)
       {
          // MQL5: インデックスからチケットを取得
          ulong ticket = OrderGetTicket(i);
          if(ticket == 0)
             continue;
-         
+
          // MQL5: チケットで注文を選択
          if(!exMQL.OrderSelect(ticket))
             continue;
-         
+
          // マジックナンバーチェック
          long order_magic = exMQL.OrderGetInteger(ORDER_MAGIC);
          if(order_magic != m_magic_number)
@@ -146,7 +146,7 @@ private:
             Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " magic=", order_magic, " (expected=", m_magic_number, ")");
             continue;
          }
-         
+
          // シンボルチェック
          string order_symbol = exMQL.OrderGetString(ORDER_SYMBOL);
          if(order_symbol != _Symbol)
@@ -154,7 +154,7 @@ private:
             Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " symbol=", order_symbol, " (expected=", _Symbol, ")");
             continue;
          }
-         
+
          // 注文タイプチェック（BuyStop or SellStop）
          ENUM_ORDER_TYPE order_type = (ENUM_ORDER_TYPE)exMQL.OrderGetInteger(ORDER_TYPE);
          Print("[Aegis-TRACE][Observation] Found: ticket=", ticket, " type=", order_type);
@@ -164,11 +164,11 @@ private:
             return true;  // 約定前注文あり
          }
       }
-      
+
       Print("[Aegis-TRACE][Observation] HasPendingOrders=FALSE");
       return false;  // 約定前注文なし
    }
-   
+
    //-------------------------------------------------------------------
    //| ポジションの有無をチェック                                          |
    //| [戻り値]                                                          |
@@ -178,21 +178,21 @@ private:
    bool HasPositions()
    {
       int total = OrdersTotal();
-      
+
       // ★★★ トレースログ: 検索開始 ★★★
       Print("[Aegis-TRACE][Observation] HasPositions: OrdersTotal()=", total);
-      
+
       for(int i = 0; i < total; i++)
       {
          // MQL5: インデックスからチケットを取得
          ulong ticket = OrderGetTicket(i);
          if(ticket == 0)
             continue;
-         
+
          // MQL5: チケットで注文を選択
          if(!exMQL.OrderSelect(ticket))
             continue;
-         
+
          // マジックナンバーチェック
          long order_magic = exMQL.OrderGetInteger(ORDER_MAGIC);
          if(order_magic != m_magic_number)
@@ -200,7 +200,7 @@ private:
             Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " magic=", order_magic, " (expected=", m_magic_number, ")");
             continue;
          }
-         
+
          // シンボルチェック
          string order_symbol = exMQL.OrderGetString(ORDER_SYMBOL);
          if(order_symbol != _Symbol)
@@ -208,7 +208,7 @@ private:
             Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " symbol=", order_symbol, " (expected=", _Symbol, ")");
             continue;
          }
-         
+
          // ポジションタイプチェック（Buy or Sell）
          ENUM_ORDER_TYPE order_type = (ENUM_ORDER_TYPE)exMQL.OrderGetInteger(ORDER_TYPE);
          if(order_type == ORDER_TYPE_BUY || order_type == ORDER_TYPE_SELL)
@@ -217,7 +217,7 @@ private:
             return true;  // ポジションあり
          }
       }
-      
+
       Print("[Aegis-TRACE][Observation] HasPositions=FALSE");
       return false;  // ポジションなし
    }

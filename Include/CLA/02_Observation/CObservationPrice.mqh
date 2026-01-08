@@ -38,18 +38,18 @@ public:
       m_last_bid = 0.0;
       m_last_spread = 0.0;
    }
-   
+
    //-------------------------------------------------------------------
    //| 初期化メソッド                                                     |
    //-------------------------------------------------------------------
    virtual bool Init() override
    {
       if(!CObservationBase::Init()) return false;
-      
+
       Print("[価格観測] 初期化成功");
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 終了処理                                                           |
    //-------------------------------------------------------------------
@@ -58,7 +58,7 @@ public:
       Print("[価格観測] 終了処理");
       CObservationBase::Deinit();
    }
-   
+
    //-------------------------------------------------------------------
    //| 更新メソッド（Phase 5: ログ削除）                                  |
    //-------------------------------------------------------------------
@@ -67,14 +67,14 @@ public:
       // EXMQLを使って価格情報を取得
       m_last_ask = exMQL.SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       m_last_bid = exMQL.SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      
+
       // スプレッド計算（pips）
       double point = exMQL.SymbolInfoDouble(_Symbol, SYMBOL_POINT);
       int digits = (int)exMQL.SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-      
+
       double spread_points = (m_last_ask - m_last_bid) / point;
       m_last_spread = spread_points / 10.0; // pipsに変換
-      
+
       // ★Phase 5: 毎Tickログを削除
       // data.AddLog(FUNC_ID_PRICE_OBSERVER, tick_id, log_message);
       data.SetMarketData(
@@ -82,10 +82,10 @@ public:
          m_last_ask,
          m_last_spread,
          TimeCurrent()
-      );      
+      );
       return true;
    }
-   
+
    //-------------------------------------------------------------------
    //| 最後のAsk価格を取得                                               |
    //-------------------------------------------------------------------
@@ -93,7 +93,7 @@ public:
    {
       return m_last_ask;
    }
-   
+
    //-------------------------------------------------------------------
    //| 最後のBid価格を取得                                               |
    //-------------------------------------------------------------------
@@ -101,7 +101,7 @@ public:
    {
       return m_last_bid;
    }
-   
+
    //-------------------------------------------------------------------
    //| 最後のスプレッドを取得                                             |
    //-------------------------------------------------------------------
@@ -110,3 +110,4 @@ public:
       return m_last_spread;
    }
 };
+//+------------------------------------------------------------------+

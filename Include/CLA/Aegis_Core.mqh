@@ -97,79 +97,79 @@ CExecutionManager*    g_exec_manager = NULL;        // ポインタで宣言
 int AegisInit()
 {
    Print("[起動] Aegis Hybrid EA (フェーズF/G/H統合版)");
-   
+
    // ========== ポインタインスタンス作成 ==========
    g_observer_oco_state = new CObservationOCOState(InpMagicNumber);
    g_execution = new CExecutionBase(InpMagicNumber, InpSlippage);
    g_exec_manager = new CExecutionManager(InpMagicNumber, InpSlippage);
-   
+
    if(g_observer_oco_state == NULL || g_execution == NULL || g_exec_manager == NULL)
    {
       Print("[エラー] インスタンス作成失敗");
       return INIT_FAILED;
    }
-   
+
    // ========== CLA_Data初期化 ==========
    if(!g_data.Init())
    {
       Print("[エラー] CLA_Data初期化失敗");
       return INIT_FAILED;
    }
-   
+
    g_data.SetConsoleLogEnabled(InpEnableConsoleLog);
-   
+
    // ========== Gatekeeper初期化 ==========
    if(!g_gatekeeper.Init())
    {
       Print("[エラー] Gatekeeper初期化失敗");
       return INIT_FAILED;
    }
-   
+
    // ========== 観測層初期化 ==========
    if(!g_observer_price.Init())
    {
       Print("[エラー] 価格観測初期化失敗");
       return INIT_FAILED;
    }
-   
+
    if(!g_observer_oco_state.Init())
    {
       Print("[エラー] OCO状態観測初期化失敗");
       return INIT_FAILED;
    }
-   
+
    // ========== 判断層初期化 ==========
    if(!g_decision_oco_follow.Init())
    {
       Print("[エラー] OCO判断層初期化失敗");
       return INIT_FAILED;
    }
-   
+
    // Decision Arbiter登録
    g_decision_arbiter.RegisterDecision(&g_decision_oco_follow);
    Print("[起動] Decision Arbiter: CDecisionOCOFollow登録完了");
-   
+
    // OCOパラメータ設定
    g_data.SetOCODistancePoints(InpOCODistancePoints);
    g_data.SetOCOLot(InpOCOLotSize);
    Print("[設定] OCO距離=", InpOCODistancePoints, "pt, ロット=", InpOCOLotSize);
-   
+
    // ========== 実行層初期化 ==========
    if(!g_execution.Init())
    {
       Print("[エラー] 実行層初期化失敗");
       return INIT_FAILED;
    }
-   
+
    if(!g_exec_manager.Init())
    {
       Print("[エラー] ExecutionManager初期化失敗");
       return INIT_FAILED;
    }
-   
+
    Print("[起動完了] Aegis Hybrid EA");
    PrintFormat("[設定] コンソールログ: %s", InpEnableConsoleLog ? "表示(ON)" : "非表示(OFF)");
-   
+
    return INIT_SUCCEEDED;
 }
 
@@ -179,30 +179,30 @@ int AegisInit()
 void AegisDeinit(const int reason)
 {
    Print("[終了] Aegis Hybrid EA");
-   
+
    if(g_exec_manager != NULL)
    {
       g_exec_manager.Deinit();
       delete g_exec_manager;
       g_exec_manager = NULL;
    }
-   
+
    if(g_execution != NULL)
    {
       g_execution.Deinit();
       delete g_execution;
       g_execution = NULL;
    }
-   
+
    g_decision_oco_follow.Deinit();
-   
+
    if(g_observer_oco_state != NULL)
    {
       g_observer_oco_state.Deinit();
       delete g_observer_oco_state;
       g_observer_oco_state = NULL;
    }
-   
+
    g_observer_price.Deinit();
    g_gatekeeper.Deinit();
    g_data.Deinit();
@@ -215,67 +215,68 @@ void AegisTick()
 {
    static ulong tick_id = 0;
    tick_id++;
-   
+
    // ★★★ トレースログ: Tick開始 ★★★
    Print("[Aegis-TRACE][Core] ========== Tick#", tick_id, " START (", TimeToString(TimeCurrent()), ") ==========");
-   
+
    // デバッグログ（最初の10 Tickのみ）
    if(tick_id <= 10)
    {
       Print("[DEBUG] Tick#", tick_id, " 開始");
    }
-   
+
    // ========================================
    // Layer 1: Gatekeeper チェック
    // ========================================
    ENUM_GK_RESULT gk_reason = GK_PASS;
-   
+
    if(!g_gatekeeper.Execute(g_data, tick_id, gk_reason))
    {
       g_data.SetGatekeeperResult(gk_reason, tick_id);
-      
+
       if(tick_id <= 10)
       {
          Print("[DEBUG] Tick#", tick_id, " Gatekeeper遮断: ", EnumToString(gk_reason));
       }
-      
+
       return;
    }
-   
+
    if(tick_id <= 10)
    {
       Print("[DEBUG] Tick#", tick_id, " Gatekeeper通過");
    }
-   
+
    // ========================================
    // Layer 2: 観測
    // ========================================
    g_observer_price.Update(g_data, tick_id);
    g_observer_oco_state.Update(g_data, tick_id);
-   
+
    // ========================================
    // Layer 3: 判断（Decision層）
    // ========================================
    Action final_action = g_decision_arbiter.Decide(g_data, tick_id);
-   
+
    // デバッグ用ログ（PM指示・必須）
    Print("[DEBUG][PM] Final Action type=", final_action.type, " reason=", final_action.reason);
-   
+
    if(tick_id <= 10)
    {
       Print("[DEBUG] Tick#", tick_id, " Decision完了");
    }
-   
+
    // ========================================
    // Layer 4: 実行
    // ========================================
    g_exec_manager.ExecuteAction(final_action, g_data, tick_id);
-   
+
    if(tick_id <= 10)
    {
       Print("[DEBUG] Tick#", tick_id, " 完了");
    }
-   
+
    // ★★★ トレースログ: Tick終了 ★★★
    Print("[Aegis-TRACE][Core] ========== Tick#", tick_id, " END ==========");
 }
+//+------------------------------------------------------------------+
