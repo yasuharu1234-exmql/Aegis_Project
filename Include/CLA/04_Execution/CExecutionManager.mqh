@@ -30,6 +30,11 @@
 //+------------------------------------------------------------------+
 class CExecutionManager : public CExecutionBase
 {
+private:
+   // ★Phase C-4.2: イベントログ用の変化検知
+   int m_prev_positions_total;  // 前Tickのポジション数
+   int m_prev_orders_total;     // 前Tickの注文数
+   
 public:
    //-------------------------------------------------------------------
    //| コンストラクタ                                                     |
@@ -37,6 +42,9 @@ public:
    CExecutionManager(int magic_number, int slippage = 3)
       : CExecutionBase(magic_number, slippage)
    {
+      // ★Phase C-4.2: 変化検知用初期化
+      m_prev_positions_total = 0;
+      m_prev_orders_total = 0;
    }
 
    //-------------------------------------------------------------------+
@@ -68,6 +76,20 @@ public:
    //-------------------------------------------------------------------
    bool Execute(CLA_Data &data, ulong tick_id)
    {
+      // ========== Phase C-4.2: ポジション変化検知 ==========
+      int current_positions = PositionsTotal();
+      int current_orders = OrdersTotal();
+      
+      // 約定発生検知（ポジション数が増えた）
+      if(current_positions > m_prev_positions_total)
+      {
+         DetectFill(current_positions);
+      }
+      
+      // 前回値を更新
+      m_prev_positions_total = current_positions;
+      m_prev_orders_total = current_orders;
+      
       // ========== 状態チェック ==========
       ENUM_EXEC_STATE current_state = data.GetExecState();
 
@@ -172,7 +194,11 @@ public:
       {
       case ACTION_NONE:
          // 何もしない（これも正当なAction処理）
-         Print("[ExecutionManager] Action: NONE（何もしない）");
+         // Phase C-4.2: ACTION_NONEログは InpEnableTraceSpam 時のみ
+         if(InpEnableTraceSpam)
+         {
+            Print("[ExecutionManager] Action: NONE（何もしない）");
+         }
          return true;
 
       case ACTION_OCO_PLACE:
@@ -196,7 +222,7 @@ public:
          Print("[Aegis-TRACE][Execution] Symbol: _Symbol=", _Symbol, " Symbol()=", Symbol());
          Print("[Aegis-TRACE][Execution] ask=", ask, " bid=", bid, " point=", point, " digits=", digits);
          Print("[Aegis-TRACE][Execution] buy_price=", buy_price, " sell_price=", sell_price);
-         Print("[Aegis-TRACE][Execution] lot=", lot, " sl=", sl, " tp=", tp);
+         Print("[Aegis-TRACE][Execution] lot=", lot, " sl=", sl/point, "points (", sl/point/10.0, "pips)", " tp=", tp/point, "points (", tp/point/10.0, "pips)");
 
          // 価格妥当性チェック
          if(buy_price <= ask)
@@ -330,29 +356,37 @@ public:
          // 成功
          Print("✅ [実行層] OCO配置完了");
          data.SetExecResult(EXEC_RESULT_SUCCESS, "OCO配置成功", tick_id);
+         
+         // ★Phase C-4.2: PLACE後の孤児検出
+         DetectOrphanOrders();
+         
          return true;
       }
       case ACTION_OCO_MODIFY:
-         // ★フェーズG-3: 本実装（最小版）
+         // ★Phase C-4.3: SL/TP再計算・再設定
       {
-         // Actionから新しい価格を取得
+         // ★Phase C-4.3: Actionから価格とSL/TPを取得
          double new_buy_price  = action.buy_price;
          double new_sell_price = action.sell_price;
+         double sl_distance = action.sl;  // Phase C-4.3: 判断層で計算済み
+         double tp_distance = action.tp;  // Phase C-4.3: 判断層で計算済み
 
-         // ★★★ 比較ログ: 価格情報 ★★★
-         double current_ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         double current_bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         // ★Phase C-4.3: SL/TP安全装置
+         if(sl_distance == 0.0 || tp_distance == 0.0)
+         {
+            Print("❌ [Aegis-EVENT][ERROR] MODIFY: SL/TP未設定 sl=", sl_distance, " tp=", tp_distance);
+            data.SetExecResult(EXEC_RESULT_REJECTED, "MODIFY: SL/TP未設定", tick_id);
+            return false;
+         }
+
          double current_point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
          int current_digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
 
-         Print("[Aegis-TRACE][COMPARE][BUY] MODIFY受信: new_buy_price=", new_buy_price, " current_ask=", current_ask, " diff=", (new_buy_price - current_ask) / current_point, " points");
-         Print("[Aegis-TRACE][COMPARE][SELL] MODIFY受信: new_sell_price=", new_sell_price, " current_bid=", current_bid, " diff=", (current_bid - new_sell_price) / current_point, " points");
-
-         // 既存価格との比較
-         double old_buy_price = data.GetOCOBuyPrice();
-         double old_sell_price = data.GetOCOSellPrice();
-         Print("[Aegis-TRACE][COMPARE][BUY] 価格変化: ", old_buy_price, " → ", new_buy_price, " (", (new_buy_price - old_buy_price) / current_point, " points)");
-         Print("[Aegis-TRACE][COMPARE][SELL] 価格変化: ", old_sell_price, " → ", new_sell_price, " (", (new_sell_price - old_sell_price) / current_point, " points)");
+         // ★Phase C-4.3: SL/TPを価格に変換
+         double new_buy_sl  = NormalizeDouble(new_buy_price - sl_distance, current_digits);
+         double new_buy_tp  = NormalizeDouble(new_buy_price + tp_distance, current_digits);
+         double new_sell_sl = NormalizeDouble(new_sell_price + sl_distance, current_digits);
+         double new_sell_tp = NormalizeDouble(new_sell_price - tp_distance, current_digits);
 
          // チケット取得
          ulong buy_ticket  = data.GetOCOBuyTicket();
@@ -370,7 +404,8 @@ public:
             request_buy.action = TRADE_ACTION_MODIFY;
             request_buy.order  = buy_ticket;
             request_buy.price  = new_buy_price;
-            // SL/TPは既存値を維持（簡易実装）
+            request_buy.sl     = new_buy_sl;  // ★Phase C-4.3: SL設定
+            request_buy.tp     = new_buy_tp;  // ★Phase C-4.3: TP設定
 
             buy_success = exMQL.OrderSend(request_buy, result_buy);
 
@@ -381,6 +416,7 @@ public:
             else
             {
                Print("✅ [実行層] BuyStop変更成功: チケット=", buy_ticket, " 新価格=", new_buy_price);
+               Print("[Aegis-EVENT][MODIFY] ticket=", buy_ticket, " price=", new_buy_price, " sl=", new_buy_sl, " tp=", new_buy_tp);
                data.SetOCOBuyPrice(new_buy_price);
             }
          }
@@ -394,7 +430,8 @@ public:
             request_sell.action = TRADE_ACTION_MODIFY;
             request_sell.order  = sell_ticket;
             request_sell.price  = new_sell_price;
-            // SL/TPは既存値を維持（簡易実装）
+            request_sell.sl     = new_sell_sl;  // ★Phase C-4.3: SL設定
+            request_sell.tp     = new_sell_tp;  // ★Phase C-4.3: TP設定
 
             sell_success = exMQL.OrderSend(request_sell, result_sell);
 
@@ -405,6 +442,7 @@ public:
             else
             {
                Print("✅ [実行層] SellStop変更成功: チケット=", sell_ticket, " 新価格=", new_sell_price);
+               Print("[Aegis-EVENT][MODIFY] ticket=", sell_ticket, " price=", new_sell_price, " sl=", new_sell_sl, " tp=", new_sell_tp);
                data.SetOCOSellPrice(new_sell_price);
             }
          }
@@ -799,6 +837,9 @@ private:
       // BuyStop CANCEL
       if(buy_ticket > 0 && exMQL.OrderSelect(buy_ticket))
       {
+         // ★Phase C-4.2: OCOキャンセル要求ログ
+         Print("[Aegis-EVENT][OCO] cancel request ticket=", buy_ticket, " (BuyStop)");
+         
          MqlTradeRequest request = {};
          MqlTradeResult  result  = {};
 
@@ -809,9 +850,15 @@ private:
          {
             int error_code = GetLastError();
             Print("[ExecutionManager] BuyStop CANCEL失敗: ", error_code);
+            // ★Phase C-4.2: キャンセル失敗ログ
+            Print("[Aegis-EVENT][OCO] cancel result success=false retcode=", result.retcode,
+                  " lasterr=", error_code);
          }
          else
          {
+            // ★Phase C-4.2: キャンセル成功ログ
+            Print("[Aegis-EVENT][OCO] cancel result success=true ticket=", buy_ticket);
+            
             // ★Phase 6 Task 2 - Phase 3: CANCEL_OKログ（BuyStop）
             if(InpEnableStateLog)
             {
@@ -835,6 +882,9 @@ private:
       // SellStop CANCEL
       if(sell_ticket > 0 && exMQL.OrderSelect(sell_ticket))
       {
+         // ★Phase C-4.2: OCOキャンセル要求ログ
+         Print("[Aegis-EVENT][OCO] cancel request ticket=", sell_ticket, " (SellStop)");
+         
          MqlTradeRequest request = {};
          MqlTradeResult  result  = {};
 
@@ -845,9 +895,15 @@ private:
          {
             int error_code = GetLastError();
             Print("[ExecutionManager] SellStop CANCEL失敗: ", error_code);
+            // ★Phase C-4.2: キャンセル失敗ログ
+            Print("[Aegis-EVENT][OCO] cancel result success=false retcode=", result.retcode,
+                  " lasterr=", error_code);
          }
          else
          {
+            // ★Phase C-4.2: キャンセル成功ログ
+            Print("[Aegis-EVENT][OCO] cancel result success=true ticket=", sell_ticket);
+            
             // ★Phase 6 Task 2 - Phase 3: CANCEL_OKログ（SellStop）
             if(InpEnableStateLog)
             {
@@ -892,5 +948,114 @@ private:
       return true;
    }
 
+
+   //+------------------------------------------------------------------+
+   //| Phase C-4.2: 約定検知イベントログ                                 |
+   //+------------------------------------------------------------------+
+   void DetectFill(int position_count)
+   {
+      Print("[Aegis-EVENT][FILL] ポジション発生検知 total_positions=", position_count);
+      
+      // 最新のポジション情報を出力
+      for(int i = PositionsTotal() - 1; i >= 0 && i >= PositionsTotal() - 3; i--)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket > 0)
+         {
+            ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            double sl = PositionGetDouble(POSITION_SL);
+            double tp = PositionGetDouble(POSITION_TP);
+            datetime time = (datetime)PositionGetInteger(POSITION_TIME);
+            
+            string type_str = (type == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+            
+            Print("[Aegis-EVENT][FILL] position ticket=", ticket,
+                  " type=", type_str,
+                  " price=", price,
+                  " sl=", sl,
+                  " tp=", tp,
+                  " time=", TimeToString(time, TIME_DATE|TIME_SECONDS));
+         }
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Phase C-4.2: 孤児注文（SL/TP無し）検出                            |
+   //+------------------------------------------------------------------+
+   void DetectOrphanOrders()
+   {
+      for(int i = 0; i < OrdersTotal(); i++)
+      {
+         ulong ticket = OrderGetTicket(i);
+         if(ticket > 0)
+         {
+            double sl = OrderGetDouble(ORDER_SL);
+            double tp = OrderGetDouble(ORDER_TP);
+            
+            if(sl == 0.0 || tp == 0.0)
+            {
+               ENUM_ORDER_TYPE type = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+               double price = OrderGetDouble(ORDER_PRICE_OPEN);
+               string comment = OrderGetString(ORDER_COMMENT);
+               long magic = OrderGetInteger(ORDER_MAGIC);
+               
+               Print("[Aegis-EVENT][ORPHAN] 孤児注文検出 ticket=", ticket,
+                     " type=", EnumToString(type),
+                     " price=", price,
+                     " sl=", sl,
+                     " tp=", tp,
+                     " magic=", magic,
+                     " comment=", comment);
+            }
+         }
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Phase C-4.2: 注文・ポジション最終スナップショット                  |
+   //+------------------------------------------------------------------+
+   void PrintPostSnapshot()
+   {
+      int orders_total = OrdersTotal();
+      int positions_total = PositionsTotal();
+      
+      Print("[Aegis-EVENT][POST] orders_total=", orders_total,
+            " positions_total=", positions_total);
+      
+      // 注文チケット一覧（最大5件）
+      string pending_tickets = "";
+      for(int i = 0; i < MathMin(orders_total, 5); i++)
+      {
+         ulong ticket = OrderGetTicket(i);
+         if(ticket > 0)
+         {
+            if(i > 0) pending_tickets += ",";
+            pending_tickets += IntegerToString(ticket);
+         }
+      }
+      
+      if(orders_total > 0)
+      {
+         Print("[Aegis-EVENT][POST] pending_tickets=[", pending_tickets, "]");
+      }
+      
+      // ポジションチケット一覧（最大5件）
+      string position_tickets = "";
+      for(int i = 0; i < MathMin(positions_total, 5); i++)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket > 0)
+         {
+            if(i > 0) position_tickets += ",";
+            position_tickets += IntegerToString(ticket);
+         }
+      }
+      
+      if(positions_total > 0)
+      {
+         Print("[Aegis-EVENT][POST] position_tickets=[", position_tickets, "]");
+      }
+   }
 };
 //+------------------------------------------------------------------+

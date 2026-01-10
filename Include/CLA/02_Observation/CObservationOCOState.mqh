@@ -177,49 +177,41 @@ private:
    //-------------------------------------------------------------------
    bool HasPositions()
    {
-      int total = OrdersTotal();
+      // ★Phase C-5: PositionsTotal()を使用
+      int total = PositionsTotal();
 
-      // ★★★ トレースログ: 検索開始 ★★★
-      Print("[Aegis-TRACE][Observation] HasPositions: OrdersTotal()=", total);
+      Print("[Aegis-TRACE][Observation] HasPositions: PositionsTotal()=", total);
 
       for(int i = 0; i < total; i++)
       {
-         // MQL5: インデックスからチケットを取得
-         ulong ticket = OrderGetTicket(i);
+         // ポジションチケット取得
+         ulong ticket = PositionGetTicket(i);
          if(ticket == 0)
             continue;
 
-         // MQL5: チケットで注文を選択
-         if(!exMQL.OrderSelect(ticket))
-            continue;
-
          // マジックナンバーチェック
-         long order_magic = exMQL.OrderGetInteger(ORDER_MAGIC);
-         if(order_magic != m_magic_number)
+         long position_magic = PositionGetInteger(POSITION_MAGIC);
+         if(position_magic != m_magic_number)
          {
-            Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " magic=", order_magic, " (expected=", m_magic_number, ")");
+            Print("[Aegis-TRACE][Observation] Skip position: ticket=", ticket, " magic=", position_magic, " (expected=", m_magic_number, ")");
             continue;
          }
 
          // シンボルチェック
-         string order_symbol = exMQL.OrderGetString(ORDER_SYMBOL);
-         if(order_symbol != _Symbol)
+         string position_symbol = PositionGetString(POSITION_SYMBOL);
+         if(position_symbol != _Symbol)
          {
-            Print("[Aegis-TRACE][Observation] Skip: ticket=", ticket, " symbol=", order_symbol, " (expected=", _Symbol, ")");
+            Print("[Aegis-TRACE][Observation] Skip position: ticket=", ticket, " symbol=", position_symbol, " (expected=", _Symbol, ")");
             continue;
          }
 
-         // ポジションタイプチェック（Buy or Sell）
-         ENUM_ORDER_TYPE order_type = (ENUM_ORDER_TYPE)exMQL.OrderGetInteger(ORDER_TYPE);
-         if(order_type == ORDER_TYPE_BUY || order_type == ORDER_TYPE_SELL)
-         {
-            Print("[Aegis-TRACE][Observation] HasPositions=TRUE");
-            return true;  // ポジションあり
-         }
+         // MagicNumber一致のポジションあり
+         Print("[Aegis-TRACE][Observation] HasPositions=TRUE");
+         return true;
       }
 
       Print("[Aegis-TRACE][Observation] HasPositions=FALSE");
-      return false;  // ポジションなし
+      return false;
    }
 };
 

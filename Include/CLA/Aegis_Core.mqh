@@ -38,6 +38,13 @@ input double InpOCOLotSize         = 0.1;     // OCO注文のロットサイズ
 input int    InpOCOSLPoints        = 100;     // ストップロス（ポイント）
 input int    InpOCOTPPoints        = 200;     // テイクプロフィット（ポイント）
 
+// ========== Phase C-4.1: 初期SL/TP設定 ==========
+input double InpInitialSL_Pips     = 10.0;    // 初期SL（pips）
+input double InpInitialTP_Pips     = 150.0;   // 初期TP（pips）
+
+// ========== NTick観測設定（Phase C-1追加） ==========
+input int    InpIntervalSize       = 50;      // 観測インターバルサイズ（Tick数）
+
 // ========== 追従設定 ==========
 input int    InpTrailTriggerPoints      = 100;   // 追従開始トリガー（ポイント）
 input int    InpTrailIntervalSec        = 30;    // 追従判定間隔（秒、0=毎Tick）
@@ -49,6 +56,7 @@ input int    InpMaxTrailCount           = 10;    // 最大追従回数（0=無�
 // ========== ログ設定 ==========
 input int    InpMaxLogRecords      = 2048;    // ログ最大記録件数
 input bool   InpEnableConsoleLog   = true;    // コンソールログ出力
+input bool   InpEnableTraceSpam    = false;   // Phase C-4.2: Tick洪水ログ（デバッグ用）
 
 // ========== 状態ログ設定 ==========
 input bool   InpEnableStateLog     = true;    // 通常状態ログ有効/無効
@@ -132,6 +140,9 @@ int AegisInit()
       return INIT_FAILED;
    }
 
+   // ★Phase C-1: NTick観測設定
+   g_observer_price.SetIntervalSize(InpIntervalSize);
+
    if(!g_observer_oco_state.Init())
    {
       Print("[エラー] OCO状態観測初期化失敗");
@@ -152,7 +163,17 @@ int AegisInit()
    // OCOパラメータ設定
    g_data.SetOCODistancePoints(InpOCODistancePoints);
    g_data.SetOCOLot(InpOCOLotSize);
+   g_data.SetOCOSLPoints(InpOCOSLPoints);
+   g_data.SetOCOTPPoints(InpOCOTPPoints);
    Print("[設定] OCO距離=", InpOCODistancePoints, "pt, ロット=", InpOCOLotSize);
+   
+   // ★Phase C-4.1: 初期SL/TP設定（pips → points変換）
+   double initial_sl_points = InpInitialSL_Pips * 10.0;
+   double initial_tp_points = InpInitialTP_Pips * 10.0;
+   g_data.SetInitialSLPoints(initial_sl_points);
+   g_data.SetInitialTPPoints(initial_tp_points);
+   Print("[Phase C-4.1] 初期SL=", InpInitialSL_Pips, "pips (", initial_sl_points, "points)");
+   Print("[Phase C-4.1] 初期TP=", InpInitialTP_Pips, "pips (", initial_tp_points, "points)");
 
    // ========== 実行層初期化 ==========
    if(!g_execution.Init())
@@ -217,7 +238,11 @@ void AegisTick()
    tick_id++;
 
    // ★★★ トレースログ: Tick開始 ★★★
-   Print("[Aegis-TRACE][Core] ========== Tick#", tick_id, " START (", TimeToString(TimeCurrent()), ") ==========");
+   // Phase C-4.2: Tick STARTログは InpEnableTraceSpam 時のみ
+   if(InpEnableTraceSpam)
+   {
+      Print("[Aegis-TRACE][Core] ========== Tick#", tick_id, " START (", TimeToString(TimeCurrent()), ") ==========");
+   }
 
    // デバッグログ（最初の10 Tickのみ）
    if(tick_id <= 10)
@@ -277,6 +302,10 @@ void AegisTick()
    }
 
    // ★★★ トレースログ: Tick終了 ★★★
-   Print("[Aegis-TRACE][Core] ========== Tick#", tick_id, " END ==========");
+   // Phase C-4.2: Tick ENDログは InpEnableTraceSpam 時のみ
+   if(InpEnableTraceSpam)
+   {
+      Print("[Aegis-TRACE][Core] ========== Tick#", tick_id, " END ==========");
+   }
 }
 //+------------------------------------------------------------------+

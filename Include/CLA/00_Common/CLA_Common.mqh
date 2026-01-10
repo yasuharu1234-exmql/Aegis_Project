@@ -343,7 +343,8 @@ enum ENUM_ACTION_TYPE
    ACTION_NONE = 0,      // 何もしない（重要: これも意思決定）
    ACTION_OCO_PLACE,     // OCO注文配置
    ACTION_OCO_MODIFY,    // OCO注文変更
-   ACTION_OCO_CANCEL     // OCO注文キャンセル
+   ACTION_OCO_CANCEL,    // OCO注文キャンセル
+   ACTION_OCO_CLOSE      // Phase C-5: 片側約定後の反対側クローズ
 };
 
 //+------------------------------------------------------------------+

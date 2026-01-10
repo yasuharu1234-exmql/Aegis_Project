@@ -139,6 +139,31 @@ public:
    {
       Action action;  // コンストラクタで初期化済み（全て0/空）
 
+      // ========== Phase C-2.5: NTick判断ゲート ==========
+      bool interval_completed = data.GetObs_IntervalCompleted();
+      
+      if(!interval_completed)
+      {
+         // インターバル未完了：判断をスキップ
+         action.type = ACTION_NONE;
+         action.reason = "Skip: Interval not completed";
+         // Phase C-4.2: skipログは InpEnableTraceSpam 時のみ
+         if(InpEnableTraceSpam)
+         {
+            Print("[Aegis-TRACE][Decision] skip (interval not completed)");
+         }
+         return action;
+      }
+      
+      // インターバル完了：判断を実行
+      ulong interval_id = data.GetObs_IntervalID();
+      double window_high = data.GetObs_WindowHigh();
+      double window_low = data.GetObs_WindowLow();
+      
+      Print("[Aegis-TRACE][Decision] run interval_id=", interval_id,
+            " high=", DoubleToString(window_high, 5),
+            " low=", DoubleToString(window_low, 5));
+
       // ========== 共通: 価格情報取得 ==========
       double ask   = data.GetCurrentAsk();
       double bid   = data.GetCurrentBid();
@@ -166,7 +191,17 @@ public:
       Print("[Aegis-TRACE][Decision] buy_ticket=", buy_ticket, " sell_ticket=", sell_ticket);
       Print("[Aegis-TRACE][Decision] has_oco_orders=", has_oco_orders, " has_position=", has_position);
 
-      // ========== 優先順位1: CANCEL（ポジション存在） ==========
+      // ========== 優先順位1: CLOSE（ポジション＋残存OCO注文） ==========
+      // ★Phase C-5: 片側約定後、反対側を閉じる
+      if(has_position && has_oco_orders)
+      {
+         action.type = ACTION_OCO_CLOSE;
+         action.reason = "OCO_CLOSE: Position filled";
+         Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_CLOSE");
+         return action;
+      }
+
+      // ========== 優先順位2: CANCEL（ポジションのみ、OCO無し） ==========
       if(has_position)
       {
          action.type = ACTION_OCO_CANCEL;
@@ -175,29 +210,37 @@ public:
          return action;
       }
 
-      // ========== 優先順位2: MODIFY（OCO注文存在） ==========
+      // ========== 優先順位3: MODIFY（OCO注文存在） ==========
       if(has_oco_orders)
       {
          // OCO配置距離を取得
          double distance_points = data.GetOCODistancePoints();
 
-         // 新しい価格を計算
-         double new_buy_price  = NormalizeDouble(ask + distance_points * point, digits);
-         double new_sell_price = NormalizeDouble(bid - distance_points * point, digits);
+         // ★Phase C-2.5: window_high/low を基準に価格計算
+         double new_buy_price  = NormalizeDouble(window_high + distance_points * point, digits);
+         double new_sell_price = NormalizeDouble(window_low - distance_points * point, digits);
 
+         // ★Phase C-4.3: MODIFY時のSL/TP再計算（必須）
+         double initial_sl_points = data.GetInitialSLPoints();
+         double initial_tp_points = data.GetInitialTPPoints();
+         
          action.type = ACTION_OCO_MODIFY;
          action.buy_price  = new_buy_price;
          action.sell_price = new_sell_price;
+         action.sl = initial_sl_points * point;  // Phase C-4.3: SL再計算
+         action.tp = initial_tp_points * point;  // Phase C-4.3: TP再計算
          action.reason = "OCO_MODIFY: Price follow";
          /*DEBUG*/
          Print("[Aegis-TRACE][Decision][MODIFY]",
-               " ask=", ask,
-               " bid=", bid,
+               " window_high=", window_high,
+               " window_low=", window_low,
                " point=", point,
                " digits=", digits,
                " dist=", distance_points,
                " new_buy_price=", new_buy_price,
-               " new_sell_price=", new_sell_price);
+               " new_sell_price=", new_sell_price,
+               " sl=", action.sl, " (", initial_sl_points/10.0, "pips)",
+               " tp=", action.tp, " (", initial_tp_points/10.0, "pips)");
          /*DEBUG*/
 
          // target_ticketは後回し（フェーズF-4では未使用）
@@ -207,7 +250,7 @@ public:
          return action;
       }
 
-      // ========== 優先順位3: PLACE（エントリー可能） ==========
+      // ========== 優先順位4: PLACE（エントリー可能） ==========
       bool entry_clear = data.GetObs_EntryClear();
 
       // ★★★ トレースログ: entry_clear判定 ★★★
@@ -218,35 +261,40 @@ public:
          // OCO配置距離を取得
          double distance_points = data.GetOCODistancePoints();
 
-         // BuyStop価格 = Ask + 距離
-         double buy_price  = NormalizeDouble(ask + distance_points * point, digits);
+         // ★Phase C-2.5: window_high/low を基準に価格計算
+         // BuyStop価格 = WindowHigh + 距離
+         double buy_price  = NormalizeDouble(window_high + distance_points * point, digits);
 
-         // SellStop価格 = Bid - 距離
-         double sell_price = NormalizeDouble(bid - distance_points * point, digits);
+         // SellStop価格 = WindowLow - 距離
+         double sell_price = NormalizeDouble(window_low - distance_points * point, digits);
 
          // ★★★ トレースログ: ACTION_OCO_PLACE生成 ★★★
          Print("[Aegis-TRACE][Decision] ACTION_OCO_PLACE: buy_price=", buy_price, " sell_price=", sell_price, " lot=", data.GetOCOLot());
 
+         // ★Phase C-4.1: 初期SL/TP計算（必須）
+         double initial_sl_points = data.GetInitialSLPoints();
+         double initial_tp_points = data.GetInitialTPPoints();
+         
          action.type = ACTION_OCO_PLACE;
          action.buy_price  = buy_price;
          action.sell_price = sell_price;
          action.lot = data.GetOCOLot();
-         action.sl = data.GetOCOSLPoints() * point;
-         action.tp = data.GetOCOTPPoints() * point;
+         action.sl = initial_sl_points * point;  // Phase C-4.1: 初期SL使用
+         action.tp = initial_tp_points * point;  // Phase C-4.1: 初期TP使用
          action.reason = "OCO_PLACE: Entry condition met";
 
          /*DEBUG*/
          Print("[Aegis-TRACE][Decision][PLACE]",
-               " ask=", ask,
-               " bid=", bid,
+               " window_high=", window_high,
+               " window_low=", window_low,
                " dist=", distance_points,
                " point=", point,
                " digits=", digits,
                " buy_price=", buy_price,
                " sell_price=", sell_price,
                " action.lot=", action.lot,
-               " action.sl=", action.sl,
-               " action.tp=", action.tp,
+               " action.sl=", action.sl, " (", initial_sl_points/10.0, "pips)",
+               " action.tp=", action.tp, " (", initial_tp_points/10.0, "pips)",
                " action.reason=", action.reason);
          /*DEBUG*/
 
@@ -254,7 +302,7 @@ public:
          return action;
       }
 
-      // ========== 優先順位4: NONE（何もしない） ==========
+      // ========== 優先順位5: NONE（何もしない） ==========
       action.type = ACTION_NONE;
       action.reason = "No action required";
       Print("[Aegis-TRACE][Decision] return Action=ACTION_NONE (entry_clear=false)");

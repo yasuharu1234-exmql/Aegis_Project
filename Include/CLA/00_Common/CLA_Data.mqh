@@ -123,6 +123,16 @@ private:
 
    // ========== 追従管理（Phase 4追加） ==========
    datetime           m_last_order_action_time; // 前回注文配置または変更成功時刻
+
+   // ========== NTick観測（Phase C-1追加） ==========
+   bool               m_obs_interval_completed;  // インターバル完了フラグ（観測事実）
+   double             m_obs_window_high;         // インターバル内最高値
+   double             m_obs_window_low;          // インターバル内最安値
+   ulong              m_obs_interval_id;         // インターバルID（デバッグ用）
+
+   // ========== 初期SL/TP（Phase C-4.1追加） ==========
+   double             m_initial_sl_points;       // 初期SL（ポイント）
+   double             m_initial_tp_points;       // 初期TP（ポイント）
 public:
    //+------------------------------------------------------------------+
    //| コンストラクタ                                                    |
@@ -173,6 +183,16 @@ public:
 
       // ★Phase 4: 追従管理初期化
       m_last_order_action_time = 0;
+
+      // ★Phase C-1: NTick観測初期化
+      m_obs_interval_completed = false;
+      m_obs_window_high = 0.0;
+      m_obs_window_low = 0.0;
+      m_obs_interval_id = 0;
+
+      // ★Phase C-4.1: 初期SL/TP初期化
+      m_initial_sl_points = 0.0;
+      m_initial_tp_points = 0.0;
    }
 
    //+------------------------------------------------------------------+
@@ -680,6 +700,102 @@ public:
    datetime GetLastOrderActionTime() const
    {
       return m_last_order_action_time;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：インターバル完了フラグの設定（Phase C-1）              |
+   //+------------------------------------------------------------------+
+   void SetObs_IntervalCompleted(bool completed)
+   {
+      m_obs_interval_completed = completed;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：インターバル完了フラグの取得（Phase C-1）              |
+   //+------------------------------------------------------------------+
+   bool GetObs_IntervalCompleted() const
+   {
+      return m_obs_interval_completed;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：ウィンドウ内最高値の設定（Phase C-1）                  |
+   //+------------------------------------------------------------------+
+   void SetObs_WindowHigh(double high)
+   {
+      m_obs_window_high = high;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：ウィンドウ内最高値の取得（Phase C-1）                  |
+   //+------------------------------------------------------------------+
+   double GetObs_WindowHigh() const
+   {
+      return m_obs_window_high;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：ウィンドウ内最安値の設定（Phase C-1）                  |
+   //+------------------------------------------------------------------+
+   void SetObs_WindowLow(double low)
+   {
+      m_obs_window_low = low;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：ウィンドウ内最安値の取得（Phase C-1）                  |
+   //+------------------------------------------------------------------+
+   double GetObs_WindowLow() const
+   {
+      return m_obs_window_low;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：インターバルIDの設定（Phase C-1）                      |
+   //+------------------------------------------------------------------+
+   void SetObs_IntervalID(ulong id)
+   {
+      m_obs_interval_id = id;
+   }
+
+   //+------------------------------------------------------------------+
+   //| NTick観測：インターバルIDの取得（Phase C-1）                      |
+   //+------------------------------------------------------------------+
+   ulong GetObs_IntervalID() const
+   {
+      return m_obs_interval_id;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-4.1: 初期SLの設定                                         |
+   //+------------------------------------------------------------------+
+   void SetInitialSLPoints(double sl_points)
+   {
+      m_initial_sl_points = sl_points;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-4.1: 初期SLの取得                                         |
+   //+------------------------------------------------------------------+
+   double GetInitialSLPoints() const
+   {
+      return m_initial_sl_points;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-4.1: 初期TPの設定                                         |
+   //+------------------------------------------------------------------+
+   void SetInitialTPPoints(double tp_points)
+   {
+      m_initial_tp_points = tp_points;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-4.1: 初期TPの取得                                         |
+   //+------------------------------------------------------------------+
+   double GetInitialTPPoints() const
+   {
+      return m_initial_tp_points;
    }
 };
 
