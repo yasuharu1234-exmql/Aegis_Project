@@ -344,7 +344,8 @@ enum ENUM_ACTION_TYPE
    ACTION_OCO_PLACE,     // OCO注文配置
    ACTION_OCO_MODIFY,    // OCO注文変更
    ACTION_OCO_CANCEL,    // OCO注文キャンセル
-   ACTION_OCO_CLOSE      // Phase C-5: 片側約定後の反対側クローズ
+   ACTION_OCO_CLOSE,      // Phase C-5: 片側約定後の反対側クローズ
+   ACTION_BE_APPLY       // Phase C-7.1: ブレイクイーブン適用
 };
 
 //+------------------------------------------------------------------+

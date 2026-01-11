@@ -512,6 +512,149 @@ public:
          return true;
       }
 
+
+      case ACTION_OCO_CLOSE:
+         // ★Phase C-6: 片側約定後の反対側クローズ
+      {
+         Print("[Aegis-EVENT][CLOSE] ACTION_OCO_CLOSE 実行開始");
+
+         int cancelled = 0;
+         int total = OrdersTotal();
+
+         for(int i = total - 1; i >= 0; i--)
+         {
+            ulong ticket = OrderGetTicket(i);
+            if(ticket == 0) continue;
+
+            long magic = OrderGetInteger(ORDER_MAGIC);
+            if(magic != m_magic_number) continue;
+
+            string symbol = OrderGetString(ORDER_SYMBOL);
+            if(symbol != _Symbol) continue;
+
+            ENUM_ORDER_TYPE type = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+            if(type != ORDER_TYPE_BUY_STOP &&
+               type != ORDER_TYPE_SELL_STOP &&
+               type != ORDER_TYPE_BUY_LIMIT &&
+               type != ORDER_TYPE_SELL_LIMIT)
+            {
+               continue;
+            }
+
+            MqlTradeRequest req = {};
+            MqlTradeResult  res = {};
+            req.action = TRADE_ACTION_REMOVE;
+            req.order  = ticket;
+
+            if(exMQL.OrderSend(req, res))
+            {
+               Print("[Aegis-EVENT][CLOSE] 削除成功 ticket=", ticket);
+               cancelled++;
+            }
+            else
+            {
+               Print("[Aegis-EVENT][CLOSE] 削除失敗 ticket=", ticket,
+                     " err=", GetLastError());
+            }
+         }
+
+         Print("[Aegis-EVENT][CLOSE] 完了 cancelled=", cancelled);
+
+         data.SetOCOBuyTicket(0);
+         data.SetOCOSellTicket(0);
+
+         data.SetExecResult(EXEC_RESULT_SUCCESS,
+                           "OCO_CLOSE 完了",
+                           tick_id);
+         return true;
+      }
+
+      case ACTION_BE_APPLY:
+         // ★Phase C-7.1: ブレイクイーブン（BE）適用
+      {
+         Print("[Aegis-EVENT][BE] 開始");
+
+         int updated = 0;
+         int total = PositionsTotal();
+
+         for(int i = total - 1; i >= 0; i--)
+         {
+            ulong ticket = PositionGetTicket(i);
+            if(ticket == 0) continue;
+
+            // Magic番号チェック
+            long magic = PositionGetInteger(POSITION_MAGIC);
+            if(magic != m_magic_number) continue;
+
+            // Symbol一致チェック
+            string symbol = PositionGetString(POSITION_SYMBOL);
+            if(symbol != _Symbol) continue;
+
+            // ポジション情報取得
+            ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+            double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+            double current_sl = PositionGetDouble(POSITION_SL);
+            double current_tp = PositionGetDouble(POSITION_TP);
+
+            // 現在価格取得
+            double current_price = (pos_type == POSITION_TYPE_BUY) ?
+                                   SymbolInfoDouble(_Symbol, SYMBOL_BID) :
+                                   SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+            int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+
+            // BE価格計算（建値）
+            double new_sl = NormalizeDouble(open_price, digits);
+
+            // 既にBE済みかチェック（SLが建値付近にある場合はスキップ）
+            double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+            if(MathAbs(current_sl - new_sl) < 5 * point)
+            {
+               Print("[Aegis-EVENT][BE] スキップ（既にBE済み） ticket=", ticket, " current_sl=", current_sl);
+               continue;
+            }
+
+            // ログ出力
+            Print("[Aegis-EVENT][BE] 対象 position_ticket=", ticket,
+                  " type=", (pos_type == POSITION_TYPE_BUY ? "BUY" : "SELL"),
+                  " open=", open_price,
+                  " current=", current_price,
+                  " old_sl=", current_sl,
+                  " new_sl=", new_sl);
+
+            // SL変更実行
+            MqlTradeRequest req = {};
+            MqlTradeResult  res = {};
+
+            req.action   = TRADE_ACTION_SLTP;
+            req.position = ticket;
+            req.symbol   = _Symbol;
+            req.sl       = new_sl;
+            req.tp       = current_tp;  // TPは変更しない
+
+            bool success = exMQL.OrderSend(req, res);
+
+            if(success)
+            {
+               Print("[Aegis-EVENT][BE] 成功 ticket=", ticket, " retcode=", res.retcode);
+               updated++;
+            }
+            else
+            {
+               Print("[Aegis-EVENT][BE] 失敗 ticket=", ticket,
+                     " retcode=", res.retcode,
+                     " error=", GetLastError());
+            }
+         }
+
+         Print("[Aegis-EVENT][BE] 完了 更新件数=", updated);
+
+         // POSTスナップショット
+         PrintPostSnapshot();
+
+         data.SetExecResult(EXEC_RESULT_SUCCESS, "BE適用完了", tick_id);
+         return true;
+      }
       default:
          // 未知のAction種別
          Print("[ExecutionManager] 警告: 未知のAction種別: ", action.type);

@@ -43,7 +43,7 @@ input double InpInitialSL_Pips     = 10.0;    // 初期SL（pips）
 input double InpInitialTP_Pips     = 150.0;   // 初期TP（pips）
 
 // ========== NTick観測設定（Phase C-1追加） ==========
-input int    InpIntervalSize       = 50;      // 観測インターバルサイズ（Tick数）
+input int    InpIntervalSize       = 10;      // 観測インターバルサイズ（Tick数）
 
 // ========== 追従設定 ==========
 input int    InpTrailTriggerPoints      = 100;   // 追従開始トリガー（ポイント）
@@ -309,3 +309,56 @@ void AegisTick()
    }
 }
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| Phase C-6: OnTradeTransaction - 約定検知                         |
+//+------------------------------------------------------------------+
+void AegisOnTradeTransaction(
+   const MqlTradeTransaction& trans,
+   const MqlTradeRequest& request,
+   const MqlTradeResult& result
+)
+{
+   // DEAL_ADD（約定発生）のみ処理
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+   {
+      return;
+   }
+   
+   // Symbol確認
+   if(trans.symbol != _Symbol)
+   {
+      return;
+   }
+   
+   // Deal情報取得
+   if(!HistoryDealSelect(trans.deal))
+   {
+      return;
+   }
+   
+   // Magic確認
+   long deal_magic = HistoryDealGetInteger(trans.deal, DEAL_MAGIC);
+   if(deal_magic != InpMagicNumber)
+   {
+      return;
+   }
+   
+   // ENTRY_IN（新規エントリー）のみ
+   ENUM_DEAL_ENTRY entry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+   if(entry != DEAL_ENTRY_IN)
+   {
+      return;
+   }
+   
+   // 約定検知
+   ENUM_DEAL_TYPE deal_type = (ENUM_DEAL_TYPE)HistoryDealGetInteger(trans.deal, DEAL_TYPE);
+   double deal_price = HistoryDealGetDouble(trans.deal, DEAL_PRICE);
+   string type_str = (deal_type == DEAL_TYPE_BUY) ? "BUY" : "SELL";
+   
+   Print("[Aegis-EVENT][FILL] TradeTransaction detected");
+   Print("[Aegis-EVENT][FILL] deal=", trans.deal, " type=", type_str, " price=", deal_price);
+   
+   // ★Phase C-6: OCO_CLOSEが必要とマーク
+   g_data.SetNeedOCOClose(true);
+}
+

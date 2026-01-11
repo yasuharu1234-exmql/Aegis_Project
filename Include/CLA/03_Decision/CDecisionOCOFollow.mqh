@@ -39,6 +39,45 @@ class CDecisionOCOFollow : public CDecisionBase
 private:
    bool m_last_entry_clear;  // 最後に取得したエントリー可能状態
 
+   //-------------------------------------------------------------------
+   //| BE（ブレイクイーブン）判定（Phase C-7.1b）                        |
+   //| [戻り値]                                                          |
+   //|   true  : BE条件達成（含み益がトリガー以上）                       |
+   //|   false : BE未達                                                  |
+   //-------------------------------------------------------------------
+   bool IsBreakEvenReached()
+   {
+      // ポジション情報取得
+      if(PositionsTotal() == 0) return false;
+      
+      ulong ticket = PositionGetTicket(0);
+      if(ticket == 0) return false;
+      
+      double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+      ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      
+      // 現在価格取得
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double current_price = (pos_type == POSITION_TYPE_BUY) ? bid : ask;
+      double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+      
+      // 含み益計算（points）
+      double profit_points = 0.0;
+      if(pos_type == POSITION_TYPE_BUY)
+      {
+         profit_points = (current_price - open_price) / point;
+      }
+      else
+      {
+         profit_points = (open_price - current_price) / point;
+      }
+      
+      // BEトリガー：10pips = 100points（仮）
+      double be_trigger_points = 100.0;
+      
+      return (profit_points >= be_trigger_points);
+   }
 public:
    //-------------------------------------------------------------------
    //| コンストラクタ                                                     |
@@ -201,12 +240,23 @@ public:
          return action;
       }
 
-      // ========== 優先順位2: CANCEL（ポジションのみ、OCO無し） ==========
-      if(has_position)
+      // ========== 優先順位2: BE判定（ポジションのみ、OCO無し） ==========
+      // ★Phase C-7.1b: BE優先順位追加
+      if(has_position && !has_oco_orders)
       {
-         action.type = ACTION_OCO_CANCEL;
-         action.reason = "OCO_CANCEL: Position detected";
-         Print("[Aegis-TRACE][Decision] return Action=ACTION_OCO_CANCEL");
+         // BE判定（最小）
+         if(IsBreakEvenReached())
+         {
+            action.type = ACTION_BE_APPLY;
+            action.reason = "BE trigger reached";
+            Print("[Aegis-TRACE][Decision] return Action=ACTION_BE_APPLY");
+            return action;
+         }
+
+         // 何もしない（BE未達）
+         action.type = ACTION_NONE;
+         action.reason = "Hold position (BE not reached)";
+         Print("[Aegis-TRACE][Decision] return Action=ACTION_NONE (holding for BE)");
          return action;
       }
 

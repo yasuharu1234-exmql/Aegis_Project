@@ -133,6 +133,9 @@ private:
    // ========== 初期SL/TP（Phase C-4.1追加） ==========
    double             m_initial_sl_points;       // 初期SL（ポイント）
    double             m_initial_tp_points;       // 初期TP（ポイント）
+
+   // ========== Phase C-6: OCO_CLOSEトリガーフラグ ==========
+   bool               m_need_oco_close;          // OCO_CLOSEが必要
 public:
    //+------------------------------------------------------------------+
    //| コンストラクタ                                                    |
@@ -193,6 +196,9 @@ public:
       // ★Phase C-4.1: 初期SL/TP初期化
       m_initial_sl_points = 0.0;
       m_initial_tp_points = 0.0;
+
+      // ★Phase C-6: OCO_CLOSEフラグ初期化
+      m_need_oco_close = false;
    }
 
    //+------------------------------------------------------------------+
@@ -796,6 +802,22 @@ public:
    double GetInitialTPPoints() const
    {
       return m_initial_tp_points;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-6: OCO_CLOSEが必要かフラグ設定                            |
+   //+------------------------------------------------------------------+
+   void SetNeedOCOClose(bool need)
+   {
+      m_need_oco_close = need;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-6: OCO_CLOSEが必要かフラグ取得                            |
+   //+------------------------------------------------------------------+
+   bool NeedOCOClose() const
+   {
+      return m_need_oco_close;
    }
 };
 
