@@ -136,6 +136,12 @@ private:
 
    // ========== Phase C-6: OCO_CLOSEトリガーフラグ ==========
    bool               m_need_oco_close;          // OCO_CLOSEが必要
+
+   // ========== Phase C-7.1c: ポジション状態観測 ==========
+   bool               m_has_position;           // ポジション保有状態
+   double             m_profit_points;          // 含み益（points）
+   bool               m_be_reached;             // BE条件達成
+   bool               m_be_already_applied;     // BE適用済み
 public:
    //+------------------------------------------------------------------+
    //| コンストラクタ                                                    |
@@ -199,6 +205,12 @@ public:
 
       // ★Phase C-6: OCO_CLOSEフラグ初期化
       m_need_oco_close = false;
+
+      // ★Phase C-7.1c: ポジション状態初期化
+      m_has_position = false;
+      m_profit_points = 0.0;
+      m_be_reached = false;
+      m_be_already_applied = false;
    }
 
    //+------------------------------------------------------------------+
@@ -818,6 +830,52 @@ public:
    bool NeedOCOClose() const
    {
       return m_need_oco_close;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-7.1c: ポジション状態設定                                   |
+   //+------------------------------------------------------------------+
+   void SetHasPosition(bool has_position)
+   {
+      m_has_position = has_position;
+   }
+
+   void SetProfitPoints(double profit_points)
+   {
+      m_profit_points = profit_points;
+   }
+
+   void SetBEReached(bool be_reached)
+   {
+      m_be_reached = be_reached;
+   }
+
+   void SetBEAlreadyApplied(bool be_applied)
+   {
+      m_be_already_applied = be_applied;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-7.1c: ポジション状態取得                                   |
+   //+------------------------------------------------------------------+
+   bool GetHasPosition() const
+   {
+      return m_has_position;
+   }
+
+   double GetProfitPoints() const
+   {
+      return m_profit_points;
+   }
+
+   bool GetBEReached() const
+   {
+      return m_be_reached;
+   }
+
+   bool GetBEAlreadyApplied() const
+   {
+      return m_be_already_applied;
    }
 };
 

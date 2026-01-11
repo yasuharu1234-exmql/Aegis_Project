@@ -81,6 +81,7 @@ input double InpTP = 0.0;
 #include <CLA/01_Gatekeeper/CGatekeeper.mqh>
 #include <CLA/02_Observation/CObservationPrice.mqh>
 #include <CLA/02_Observation/CObservationOCOState.mqh>  // ★フェーズF追加
+#include <CLA/02_Observation/CObservationPositionState.mqh>  // Phase C-7.1c
 #include <CLA/03_Decision/CDecisionBase.mqh>            // ★フェーズF追加
 #include <CLA/03_Decision/CDecisionOCOFollow.mqh>       // ★フェーズF追加
 #include <CLA/03_Decision/CDecisionArbiter.mqh>         // ★フェーズF追加
@@ -94,6 +95,7 @@ input double InpTP = 0.0;
 CGatekeeper           g_gatekeeper;
 CObservationPrice     g_observer_price;
 CObservationOCOState* g_observer_oco_state = NULL;  // ポインタで宣言
+CObservationPositionState* g_observer_pos_state = NULL;  // Phase C-7.1c: ポジション状態観測
 CDecisionOCOFollow    g_decision_oco_follow;
 CDecisionArbiter      g_decision_arbiter;
 CExecutionBase*       g_execution = NULL;           // ポインタで宣言
@@ -111,7 +113,10 @@ int AegisInit()
    g_execution = new CExecutionBase(InpMagicNumber, InpSlippage);
    g_exec_manager = new CExecutionManager(InpMagicNumber, InpSlippage);
 
-   if(g_observer_oco_state == NULL || g_execution == NULL || g_exec_manager == NULL)
+   // ========== Phase C-7.1c: ポジション状態観測層初期化 ==========
+   g_observer_pos_state = new CObservationPositionState();
+
+   if(g_observer_oco_state == NULL || g_observer_pos_state == NULL || g_execution == NULL || g_exec_manager == NULL)
    {
       Print("[エラー] インスタンス作成失敗");
       return INIT_FAILED;
@@ -146,6 +151,13 @@ int AegisInit()
    if(!g_observer_oco_state.Init())
    {
       Print("[エラー] OCO状態観測初期化失敗");
+      return INIT_FAILED;
+   }
+
+   // Phase C-7.1c: ポジション状態観測初期化
+   if(!g_observer_pos_state.Init())
+   {
+      Print("[エラー] ポジション状態観測初期化失敗");
       return INIT_FAILED;
    }
 
@@ -224,6 +236,14 @@ void AegisDeinit(const int reason)
       g_observer_oco_state = NULL;
    }
 
+   // Phase C-7.1c: ポジション状態観測終了処理
+   if(g_observer_pos_state != NULL)
+   {
+      g_observer_pos_state.Deinit();
+      delete g_observer_pos_state;
+      g_observer_pos_state = NULL;
+   }
+
    g_observer_price.Deinit();
    g_gatekeeper.Deinit();
    g_data.Deinit();
@@ -277,6 +297,7 @@ void AegisTick()
    // ========================================
    g_observer_price.Update(g_data, tick_id);
    g_observer_oco_state.Update(g_data, tick_id);
+   g_observer_pos_state.Update(g_data, tick_id);  // Phase C-7.1c
 
    // ========================================
    // Layer 3: 判断（Decision層）

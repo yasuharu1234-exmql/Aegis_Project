@@ -179,6 +179,21 @@ public:
       Action action;  // コンストラクタで初期化済み（全て0/空）
 
       // ========== Phase C-2.5: NTick判断ゲート ==========
+
+      // ========== Phase C-7.1c: BE優先判定 ==========
+      // ポジション状態観測データを取得
+      bool has_position = data.GetHasPosition();
+      bool be_reached = data.GetBEReached();
+      bool be_applied = data.GetBEAlreadyApplied();
+      
+      // BE条件達成かつ未適用の場合は、interval関係なく処理
+      if(has_position && be_reached && !be_applied)
+      {
+         action.type = ACTION_BE_APPLY;
+         action.reason = "BE trigger reached (priority)";
+         Print("[Aegis-TRACE][Decision] return Action=ACTION_BE_APPLY (BE priority)");
+         return action;
+      }
       bool interval_completed = data.GetObs_IntervalCompleted();
       
       if(!interval_completed)
@@ -223,7 +238,6 @@ public:
       ulong buy_ticket  = data.GetOCOBuyTicket();
       ulong sell_ticket = data.GetOCOSellTicket();
       bool has_oco_orders = (buy_ticket > 0 || sell_ticket > 0);
-      bool has_position   = (PositionsTotal() > 0);
 
       // ★★★ トレースログ: 関数開始 ★★★
       Print("[Aegis-TRACE][Decision] === GenerateActionCandidate START ===");
