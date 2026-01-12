@@ -655,6 +655,96 @@ public:
          data.SetExecResult(EXEC_RESULT_SUCCESS, "BE適用完了", tick_id);
          return true;
       }
+
+      case ACTION_SANDWICH_TRAIL:
+         // ★Phase C-7.2: 挟み撃ちトレイル
+      {
+         // Phase C-7.2a: Print削減（エラーのみ）
+         int updated = 0;
+         int total = PositionsTotal();
+         
+         for(int i = total - 1; i >= 0; i--)
+         {
+            ulong ticket = PositionGetTicket(i);
+            if(ticket == 0) continue;
+            
+            // Magic番号チェック
+            long magic = PositionGetInteger(POSITION_MAGIC);
+            if(magic != m_magic_number) continue;
+            
+            // Symbol一致チェック
+            string symbol = PositionGetString(POSITION_SYMBOL);
+            if(symbol != _Symbol) continue;
+            
+            // ポジション情報取得
+            ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+            double current_sl = PositionGetDouble(POSITION_SL);
+            double current_tp = PositionGetDouble(POSITION_TP);
+            double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+            
+            // 新SL/TP取得（0の場合は現状維持）
+            double new_sl = (action.sl > 0.0) ? NormalizeDouble(action.sl, digits) : current_sl;
+            double new_tp = (action.tp > 0.0) ? NormalizeDouble(action.tp, digits) : current_tp;
+            
+            // 安全チェック
+            bool safe = true;
+            if(pos_type == POSITION_TYPE_BUY)
+            {
+               if(new_sl >= bid || new_tp <= bid)
+               {
+                  Print("[Aegis-EVENT][挟み撃ち] 破綻値検出（BUY） ticket=", ticket,
+                        " bid=", bid, " new_sl=", new_sl, " new_tp=", new_tp);
+                  safe = false;
+               }
+            }
+            else
+            {
+               if(new_sl <= ask || new_tp >= ask)
+               {
+                  Print("[Aegis-EVENT][挟み撃ち] 破綻値検出（SELL） ticket=", ticket,
+                        " ask=", ask, " new_sl=", new_sl, " new_tp=", new_tp);
+                  safe = false;
+               }
+            }
+            
+            if(!safe) continue;
+            
+            // Phase C-7.2a: 成功時Print削除（ログで追跡）
+            
+            // SL/TP変更実行
+            MqlTradeRequest req = {};
+            MqlTradeResult  res = {};
+            
+            req.action   = TRADE_ACTION_SLTP;
+            req.position = ticket;
+            req.symbol   = _Symbol;
+            req.sl       = new_sl;
+            req.tp       = new_tp;
+            
+            bool success = exMQL.OrderSend(req, res);
+            
+            if(success)
+            {
+               // Phase C-7.2a: 成功Print削減
+               updated++;
+            }
+            else
+            {
+               Print("[Aegis-EVENT][挟み撃ち] ❌失敗 ticket=", ticket,
+                     " retcode=", res.retcode, " error=", GetLastError());
+            }
+         }
+         
+         // Phase C-7.2a: 完了Print削減
+         
+         PrintPostSnapshot();
+         
+         data.SetExecResult(EXEC_RESULT_SUCCESS, "挟み撃ちトレイル完了", tick_id);
+         return true;
+      }
+      
       default:
          // 未知のAction種別
          Print("[ExecutionManager] 警告: 未知のAction種別: ", action.type);

@@ -142,6 +142,14 @@ private:
    double             m_profit_points;          // 含み益（points）
    bool               m_be_reached;             // BE条件達成
    bool               m_be_already_applied;     // BE適用済み
+
+   // ========== Phase C-7.2: 挟み撃ちトレイル観測 ==========
+   bool               m_sandwich_tracking_init;  // 追跡初期化済み
+   double             m_sandwich_min_price;      // 前回更新以降の最小価格
+   double             m_sandwich_max_price;      // 前回更新以降の最大価格
+   double             m_sandwich_current_sl;     // 現在のSL
+   double             m_sandwich_current_tp;     // 現在のTP
+   double             m_sandwich_open_price;     // エントリー価格
 public:
    //+------------------------------------------------------------------+
    //| コンストラクタ                                                    |
@@ -203,6 +211,14 @@ public:
       m_initial_sl_points = 0.0;
       m_initial_tp_points = 0.0;
 
+
+      // ★Phase C-7.2: 挟み撃ち観測初期化
+      m_sandwich_tracking_init = false;
+      m_sandwich_min_price = 0.0;
+      m_sandwich_max_price = 0.0;
+      m_sandwich_current_sl = 0.0;
+      m_sandwich_current_tp = 0.0;
+      m_sandwich_open_price = 0.0;
       // ★Phase C-6: OCO_CLOSEフラグ初期化
       m_need_oco_close = false;
 
@@ -877,6 +893,31 @@ public:
    {
       return m_be_already_applied;
    }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-7.2: 挟み撃ちトレイル観測データ設定                        |
+   //+------------------------------------------------------------------+
+   void SetSandwichTracking(bool tracking_init, double min_price, double max_price,
+                            double current_sl, double current_tp, double open_price)
+   {
+      m_sandwich_tracking_init = tracking_init;
+      m_sandwich_min_price = min_price;
+      m_sandwich_max_price = max_price;
+      m_sandwich_current_sl = current_sl;
+      m_sandwich_current_tp = current_tp;
+      m_sandwich_open_price = open_price;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Phase C-7.2: 挟み撃ちトレイル観測データ取得                        |
+   //+------------------------------------------------------------------+
+   bool GetSandwichTrackingInit() const { return m_sandwich_tracking_init; }
+   double GetSandwichMinPrice() const { return m_sandwich_min_price; }
+   double GetSandwichMaxPrice() const { return m_sandwich_max_price; }
+   double GetSandwichCurrentSL() const { return m_sandwich_current_sl; }
+   double GetSandwichCurrentTP() const { return m_sandwich_current_tp; }
+   double GetSandwichOpenPrice() const { return m_sandwich_open_price; }
+
 };
 
 //+------------------------------------------------------------------+

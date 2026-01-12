@@ -248,7 +248,8 @@ enum ENUM_LOG_ID
    LOG_ID_CANCEL_OK      = 108,  // キャンセル成功
    LOG_ID_FILL_DETECT    = 109,  // 約定検出
    LOG_ID_RSI_DECISION   = 110,  // RSI判断
-   LOG_ID_DECISION_SKIP  = 111,  // 判断スキップ（何もしなかった理由）
+   LOG_ID_SANDWICH_EVAL  = 111,  // Phase C-7.2a: 挟み撃ちトレイル評価
+   LOG_ID_DECISION_SKIP  = 112,  // 判断スキップ（何もしなかった理由）
 
    // ========== 将来の拡張用 ==========
    LOG_ID_GATEKEEPER    = 1000,  // Gatekeeper層
@@ -346,6 +347,7 @@ enum ENUM_ACTION_TYPE
    ACTION_OCO_CANCEL,    // OCO注文キャンセル
    ACTION_OCO_CLOSE,      // Phase C-5: 片側約定後の反対側クローズ
    ACTION_BE_APPLY       // Phase C-7.1: ブレイクイーブン適用
+   ,ACTION_SANDWICH_TRAIL  // Phase C-7.2: 挟み撃ちトレイル
 };
 
 //+------------------------------------------------------------------+

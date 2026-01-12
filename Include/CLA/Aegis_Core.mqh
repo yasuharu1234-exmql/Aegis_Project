@@ -43,7 +43,7 @@ input double InpInitialSL_Pips     = 10.0;    // 初期SL（pips）
 input double InpInitialTP_Pips     = 150.0;   // 初期TP（pips）
 
 // ========== NTick観測設定（Phase C-1追加） ==========
-input int    InpIntervalSize       = 10;      // 観測インターバルサイズ（Tick数）
+input int    InpIntervalSize       = 50;      // 観測インターバルサイズ（Tick数）
 
 // ========== 追従設定 ==========
 input int    InpTrailTriggerPoints      = 100;   // 追従開始トリガー（ポイント）

@@ -29,6 +29,12 @@
 #include "../00_Common/CLA_Data.mqh"
 #include "CDecisionBase.mqh"
 
+// ========== Phase C-7.2: 挟み撃ちトレイル定数 ==========
+#define SANDWICH_K                2.0    // 係数K
+#define SANDWICH_MIN_SL_POINTS   50.0    // SL最低距離(points)
+#define SANDWICH_MIN_TP_POINTS   50.0    // TP最低距離(points)
+
+
 //+------------------------------------------------------------------+
 //| Class   : CDecisionOCOFollow                                     |
 //| Layer   : Decision                                               |
@@ -37,6 +43,7 @@
 class CDecisionOCOFollow : public CDecisionBase
 {
 private:
+   
    bool m_last_entry_clear;  // 最後に取得したエントリー可能状態
 
    //-------------------------------------------------------------------
@@ -207,6 +214,78 @@ public:
             Print("[Aegis-TRACE][Decision] skip (interval not completed)");
          }
          return action;
+      }
+      
+
+      // ========== Phase C-7.2: 挟み撃ちトレイル判定 ==========
+      // BE適用済み & interval完了 の場合のみ評価
+      if(has_position && be_applied && interval_completed)
+      {
+         bool tracking_init = data.GetSandwichTrackingInit();
+         if(tracking_init)
+         {
+            double min_price = data.GetSandwichMinPrice();
+            double max_price = data.GetSandwichMaxPrice();
+            double current_sl = data.GetSandwichCurrentSL();
+            double current_tp = data.GetSandwichCurrentTP();
+            double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+            
+            // 次SL候補計算
+            double next_sl = (min_price + current_sl) / SANDWICH_K;
+            double sl_distance = (next_sl - min_price) / point;
+            bool sl_adopted = (sl_distance >= SANDWICH_MIN_SL_POINTS);
+            
+            // 次TP候補計算（SL未採用の場合のみ）
+            double next_tp = 0.0;
+            double tp_distance = 0.0;
+            bool tp_adopted = false;
+            
+            if(!sl_adopted)
+            {
+               next_tp = (current_tp + max_price) / SANDWICH_K;
+               tp_distance = (next_tp - max_price) / point;
+               tp_adopted = (tp_distance >= SANDWICH_MIN_TP_POINTS);
+            }
+            
+            // Phase C-7.2a: 挟み撃ち評価ログ（1行）
+            ulong ticket = (PositionsTotal() > 0) ? PositionGetTicket(0) : 0;
+            double current_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            
+            string sl_reason = sl_adopted ? "採用" : StringFormat("距離不足(%.1fpt)", sl_distance);
+            string tp_reason = (!sl_adopted && tp_adopted) ? "採用" : 
+                              (!sl_adopted) ? StringFormat("距離不足(%.1fpt)", tp_distance) : "未評価";
+            string final_action = sl_adopted ? "SL更新" : (tp_adopted ? "TP更新" : "更新なし");
+            
+            data.AddLogEx(
+               LOG_ID_SANDWICH_EVAL,
+               "挟み撃ち評価",
+               StringFormat("%.5f", current_price),
+               StringFormat("%.5f", current_sl),
+               StringFormat("%.5f", current_tp),
+               StringFormat("%.5f", min_price),
+               StringFormat("最大=%.5f 次SL=%.5f(%s) 次TP=%.5f(%s) → %s",
+                           max_price, next_sl, sl_reason, next_tp, tp_reason, final_action),
+               false  // important
+            );
+            
+            // Action決定
+            if(sl_adopted)
+            {
+               action.type = ACTION_SANDWICH_TRAIL;
+               action.reason = "Sandwich trail: SL update";
+               action.sl = next_sl;
+               action.tp = current_tp;
+               return action;
+            }
+            else if(tp_adopted)
+            {
+               action.type = ACTION_SANDWICH_TRAIL;
+               action.reason = "Sandwich trail: TP update";
+               action.sl = current_sl;
+               action.tp = next_tp;
+               return action;
+            }
+         }
       }
       
       // インターバル完了：判断を実行

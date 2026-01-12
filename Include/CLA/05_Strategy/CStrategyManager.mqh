@@ -1,119 +1,151 @@
 ﻿//+------------------------------------------------------------------+
-//| File    : CStrategyManager.mqh                                   |
+//| File    : CObservationPositionState.mqh                          |
 //| Project : Aegis Hybrid EA                                       |
-//| Layer   : Strategy Management                                    |
+//| Layer   : Observation                                            |
 //|                                                                  |
-//| Role                                                             |
-//|  - Strategy を「直呼び」から解放する                             |
-//|  - 現在アクティブな Strategy を保持・呼び出し                    |
-//|  - COMPLETED 状態を検知して切り替えを準備する                    |
-//|                                                                  |
-//| Responsibility                                                   |
-//|  - Strategy を1つだけ保持（参照渡し）                            |
-//|  - 毎Tick、その Strategy の Update() を呼ぶ                      |
-//|  - IsCompleted() で完了検知（MQL準拠・安全）                     |
-//|                                                                  |
-//| Design Policy (Sprint E-2)                                       |
-//|  - ポインタは最小限使用（参照保持のみ）                          |
-//|  - dynamic_cast 不使用（RTTI なし環境対応）                      |
-//|  - 仮想関数による完了検知（Option C）                            |
-//|  - 判断しない（呼び出すだけ）                                    |
+//| Phase C-7.1c 追加・Phase C-7.2 拡張                              |
+//| ポジション状態専用の観測層                                         |
 //|                                                                  |
 //+------------------------------------------------------------------+
 
 #property copyright   "Copyright 2025, Aegis Project"
 #property strict
 
-#ifndef STRATEGY_MANAGER_MQH
-#define STRATEGY_MANAGER_MQH
-
+#include "../00_Common/CLA_Common.mqh"
 #include "../00_Common/CLA_Data.mqh"
-#include "../03_Decision/CDecisionBase.mqh"
+#include "CObservationBase.mqh"
 
 //+------------------------------------------------------------------+
-//| Strategy 管理クラス（MQL準拠版）                                  |
+//| Class   : CObservationPositionState                              |
 //+------------------------------------------------------------------+
-class CStrategyManager
+class CObservationPositionState : public CObservationBase
 {
 private:
-   CDecisionBase* m_current;     // 現在アクティブな Strategy（参照保持のみ）
-   bool           m_has_strategy; // Strategy が存在するか
+   double m_be_trigger_points;
+   double m_be_tolerance_points;
+   
+   // Phase C-7.2: 挟み撃ちトレイル用
+   bool   m_tracking_initialized;
+   double m_tracked_min_price;
+   double m_tracked_max_price;
+   double m_last_sl;
+   double m_last_tp;
 
 public:
-   //-------------------------------------------------------------------
-   //| コンストラクタ                                                     |
-   //-------------------------------------------------------------------
-   CStrategyManager()
+   CObservationPositionState() : CObservationBase(FUNC_ID_PRICE_OBSERVER)
    {
-      m_current = NULL;
-      m_has_strategy = false;
+      m_be_trigger_points = 100.0;
+      m_be_tolerance_points = 5.0;
+      m_tracking_initialized = false;
+      m_tracked_min_price = 0.0;
+      m_tracked_max_price = 0.0;
+      m_last_sl = 0.0;
+      m_last_tp = 0.0;
    }
 
-   //-------------------------------------------------------------------
-   //| 初期化                                                             |
-   //| [引数]                                                            |
-   //|   initial_strategy : 初期 Strategy のポインタ（参照のみ保持）     |
-   //-------------------------------------------------------------------
-   void Init(CDecisionBase &initial_strategy)
+   virtual bool Init() override
    {
-      m_current = GetPointer(initial_strategy);
-      m_has_strategy = true;
-      Print("✅ [StrategyManager] 初期化完了: Strategy登録済み");
+      if(!CObservationBase::Init()) return false;
+      Print("[PosStateObs] 初期化成功 BE_TRIGGER=", m_be_trigger_points, "points");
+      return true;
    }
 
-   //-------------------------------------------------------------------
-   //| 更新処理（毎Tick呼び出し）- Phase 6: COMPLETED後も呼び続ける       |
-   //-------------------------------------------------------------------
-   void Update(CLA_Data &data, ulong tick_id)
+   virtual void Deinit() override
    {
-      // ========== Strategy 存在チェック ==========
-      if(!m_has_strategy || m_current == NULL)
+      Print("[PosStateObs] 終了処理");
+      CObservationBase::Deinit();
+   }
+
+   virtual bool Update(CLA_Data &data, ulong tick_id) override
+   {
+      int positions_total = PositionsTotal();
+      bool has_position = (positions_total > 0);
+      double profit_points = 0.0;
+      bool be_reached = false;
+      bool be_already_applied = false;
+      double current_sl = 0.0;
+      double current_tp = 0.0;
+      double open_price = 0.0;
+      ENUM_POSITION_TYPE pos_type = POSITION_TYPE_BUY;
+      double current_price = 0.0;
+
+      if(has_position)
       {
-         // Strategy が存在しない → 何もしない（正常系）
-         return;
+         ulong ticket = PositionGetTicket(0);
+         if(ticket > 0)
+         {
+            open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+            current_sl = PositionGetDouble(POSITION_SL);
+            current_tp = PositionGetDouble(POSITION_TP);
+            pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+            double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            current_price = (pos_type == POSITION_TYPE_BUY) ? bid : ask;
+            double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+
+            if(pos_type == POSITION_TYPE_BUY)
+               profit_points = (current_price - open_price) / point;
+            else
+               profit_points = (open_price - current_price) / point;
+
+            be_reached = (profit_points >= m_be_trigger_points);
+            double sl_distance_from_open = MathAbs(current_sl - open_price) / point;
+            be_already_applied = (sl_distance_from_open < m_be_tolerance_points);
+            
+            // Phase C-7.2: 挟み撃ち追跡
+            if(be_already_applied)
+            {
+               bool need_reset = false;
+               if(!m_tracking_initialized)
+                  need_reset = true;
+               else if(MathAbs(current_sl - m_last_sl) > 0.0001 || 
+                       MathAbs(current_tp - m_last_tp) > 0.0001)
+                  need_reset = true;
+               
+               if(need_reset)
+               {
+                  m_tracked_min_price = current_price;
+                  m_tracked_max_price = current_price;
+                  m_tracking_initialized = true;
+                  if(data.GetObs_IntervalCompleted())
+                     Print("[Aegis-TRACE][挟み撃ち観測] 追跡初期化 現在価格=", current_price);
+               }
+               else
+               {
+                  if(current_price < m_tracked_min_price) m_tracked_min_price = current_price;
+                  if(current_price > m_tracked_max_price) m_tracked_max_price = current_price;
+               }
+               m_last_sl = current_sl;
+               m_last_tp = current_tp;
+            }
+            else
+            {
+               m_tracking_initialized = false;
+               m_tracked_min_price = 0.0;
+               m_tracked_max_price = 0.0;
+            }
+         }
+      }
+      else
+      {
+         m_tracking_initialized = false;
+         m_tracked_min_price = 0.0;
+         m_tracked_max_price = 0.0;
       }
 
-      // ========== 現在の Strategy を実行 ==========
-      // ★Phase 6: COMPLETED 状態でも Update() を呼び続ける
-      // これにより HandleCompleted() でポジションクローズを検出し、
-      // IDLE へ遷移できる
-      if(!m_current.Update(data, tick_id))
+      data.SetHasPosition(has_position);
+      data.SetProfitPoints(profit_points);
+      data.SetBEReached(be_reached);
+      data.SetBEAlreadyApplied(be_already_applied);
+      data.SetSandwichTracking(m_tracking_initialized, m_tracked_min_price, m_tracked_max_price,
+                               current_sl, current_tp, open_price);
+
+      if(data.GetObs_IntervalCompleted() && has_position && be_already_applied)
       {
-         // Update が false を返した場合（エラー発生）
-         Print("⚠️ [StrategyManager] Strategy Update が失敗しました");
-         // エラー時も継続（Strategy 側で対処済みと判断）
+         Print("[Aegis-TRACE][挟み撃ち観測] ポジションあり BE適用済み 最小=", m_tracked_min_price,
+               " 最大=", m_tracked_max_price, " 現在SL=", current_sl, " 現在TP=", current_tp);
       }
-
-      // ========== COMPLETED 検知（Phase 6: ログのみ、呼び出しは継続） ==========
-      // ★Phase 6 変更点:
-      // - COMPLETED になっても m_has_strategy を false にしない
-      // - Update() を呼び続けることで HandleCompleted() が実行され続ける
-      // - IDLE に戻ったら IsCompleted() が false になり、新OCO配置が実行される
-      //
-      // ★注意: このログは COMPLETED → IDLE → COMPLETED のたびに出力される
-      // （過度なログ出力を避けるため、将来的には状態遷移検出が必要）
-
-      // COMPLETED 検知はログ用途のみ（呼び出しは継続）
-      // （Phase F で複数戦略切り替え時に活用予定）
-   }
-
-   //-------------------------------------------------------------------
-   //| 現在の Strategy が存在するか                                       |
-   //-------------------------------------------------------------------
-   bool HasStrategy() const
-   {
-      return m_has_strategy;
-   }
-
-   //-------------------------------------------------------------------
-   //| Strategy を切り替え（Phase F 用に予約）                           |
-   //-------------------------------------------------------------------
-   void SwitchStrategy(CDecisionBase &next_strategy)
-   {
-      Print("✅ [StrategyManager] Strategy 切り替え");
-      m_current = GetPointer(next_strategy);
-      m_has_strategy = true;
+      return true;
    }
 };
-
-#endif // STRATEGY_MANAGER_MQH
+#endif
