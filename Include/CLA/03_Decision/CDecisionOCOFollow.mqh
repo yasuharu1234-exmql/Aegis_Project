@@ -127,7 +127,7 @@ public:
    //| 更新メソッド（フェーズB実装: 受信確認のみ）                         |
    //| [引数]                                                            |
    //|   data    : システム共通データ（参照渡し）                            |
-   //|   tick_id : この操作のユニークID                                    |
+   //|   tick_id : この操作のユニークID                                   |
    //| [戻り値]                                                          |
    //|   true  : 更新成功                                                |
    //|   false : 更新失敗                                                |
@@ -232,7 +232,7 @@ public:
             
             // 次SL候補計算
             double next_sl = (min_price + current_sl) / SANDWICH_K;
-            double sl_distance = (next_sl - min_price) / point;
+            double sl_distance = (min_price - next_sl) / point;  // ★Phase C-7.2b: SL距離は最小値から下側への距離
             bool sl_adopted = (sl_distance >= SANDWICH_MIN_SL_POINTS);
             
             // 次TP候補計算（SL未採用の場合のみ）

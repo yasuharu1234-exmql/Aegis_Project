@@ -256,10 +256,10 @@ public:
       string state_log_filename = "StateLog_" + timestamp_str + ".csv";
       string state_log_path = "Aegis_Logs\\" + state_log_filename;
 
-      // FILE_ANSI: UTF-8ではなくANSI（日本語対応のため）
+      // FILE_UNICODE: UTF-8エンコード（BOM付き）
       // FILE_WRITE: 書き込みモード
       // FILE_CSV: CSV形式
-      m_state_log_handle = FileOpen(state_log_path, FILE_WRITE | FILE_CSV | FILE_ANSI, ',');
+      m_state_log_handle = FileOpen(state_log_path, FILE_WRITE | FILE_CSV | FILE_UNICODE, ',');  // ★Phase C-7.2b: UTF-8出力のため FILE_UNICODE に修正
 
       if(m_state_log_handle == INVALID_HANDLE)
       {
@@ -286,6 +286,8 @@ public:
    void Deinit()
    {
       AddLog(FUNC_ID_CLA_DATA, 0, "CLA_Data終了処理", true);
+
+      m_logger.Flush();   // ← ★Phase C-7.2b: ログバッファをCSVに吐き出す（必須）
 
       // ★Phase 6: 状態ログファイルクローズ
       if(m_state_log_handle != INVALID_HANDLE)
