@@ -53,6 +53,9 @@ input int    InpSpreadWideIntervalSec   = 60;   // スプレッド拡大時の�
 input bool   InpUseIntervalOHLC         = true; // 間隔モード時にOHLCを使用
 input int    InpMaxTrailCount           = 10;    // 最大追従回数（0=無制限）
 
+// ========== Phase D-1: Market Scan（研究用計測層）==========
+input bool   InpEnableMarketScan   = true;   // Market Scan ON時は売買パイプライン全停止
+
 // ========== ログ設定 ==========
 input int    InpMaxLogRecords      = 2048;    // ログ最大記録件数
 input bool   InpEnableConsoleLog   = true;    // コンソールログ出力
@@ -82,6 +85,7 @@ input double InpTP = 0.0;
 #include <CLA/02_Observation/CObservationPrice.mqh>
 #include <CLA/02_Observation/CObservationOCOState.mqh>  // ★フェーズF追加
 #include <CLA/02_Observation/CObservationPositionState.mqh>  // Phase C-7.1c
+#include <CLA/02_Observation/CObservationMarketScan.mqh>       // Phase D-1: Market Scan（研究用計測層）
 #include <CLA/03_Decision/CDecisionBase.mqh>            // ★フェーズF追加
 #include <CLA/03_Decision/CDecisionOCOFollow.mqh>       // ★フェーズF追加
 #include <CLA/03_Decision/CDecisionArbiter.mqh>         // ★フェーズF追加
@@ -96,6 +100,7 @@ CGatekeeper           g_gatekeeper;
 CObservationPrice     g_observer_price;
 CObservationOCOState* g_observer_oco_state = NULL;  // ポインタで宣言
 CObservationPositionState* g_observer_pos_state = NULL;  // Phase C-7.1c: ポジション状態観測
+CObservationMarketScan* g_observer_market_scan = NULL;  // Phase D-1: Market Scan（研究用計測層）
 CDecisionOCOFollow    g_decision_oco_follow;
 CDecisionArbiter      g_decision_arbiter;
 CExecutionBase*       g_execution = NULL;           // ポインタで宣言
@@ -158,6 +163,20 @@ int AegisInit()
    if(!g_observer_pos_state.Init())
    {
       Print("[エラー] ポジション状態観測初期化失敗");
+      return INIT_FAILED;
+   }
+
+   // ========== Phase D-1: Market Scan（研究用計測層）初期化 ==========
+   g_observer_market_scan = new CObservationMarketScan();
+   if(g_observer_market_scan == NULL)
+   {
+      Print("[エラー] Market Scan インスタンス作成失敗");
+      return INIT_FAILED;
+   }
+
+   if(!g_observer_market_scan.Init())
+   {
+      Print("[エラー] Market Scan 初期化失敗");
       return INIT_FAILED;
    }
 
@@ -244,6 +263,14 @@ void AegisDeinit(const int reason)
       g_observer_pos_state = NULL;
    }
 
+   // Phase D-1: Market Scan 終了処理
+   if(g_observer_market_scan != NULL)
+   {
+      g_observer_market_scan.Deinit();
+      delete g_observer_market_scan;
+      g_observer_market_scan = NULL;
+   }
+
    g_observer_price.Deinit();
    g_gatekeeper.Deinit();
    g_data.Deinit();
@@ -256,6 +283,14 @@ void AegisTick()
 {
    static ulong tick_id = 0;
    tick_id++;
+
+   // ========== Phase D-1: Market Scan ON判定（最優先） ==========
+   if(InpEnableMarketScan)
+   {
+      // Market Scan ON時は計測のみ（売買パイプライン全停止）
+      g_observer_market_scan.Update(g_data, tick_id);
+      return;  // 以降の層（Gatekeeper/Decision/Execution）は実行されない
+   }
 
    // ★★★ トレースログ: Tick開始 ★★★
    // Phase C-4.2: Tick STARTログは InpEnableTraceSpam 時のみ

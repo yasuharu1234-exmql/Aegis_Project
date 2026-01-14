@@ -256,10 +256,13 @@ public:
       string state_log_filename = "StateLog_" + timestamp_str + ".csv";
       string state_log_path = "Aegis_Logs\\" + state_log_filename;
 
-      // FILE_UNICODE: UTF-8エンコード（BOM付き）
+      // ★Phase D-1: ファイル名デバッグログ
+      Print("[CLA_Data] StateLog filename チェック: ", state_log_filename);
+
       // FILE_WRITE: 書き込みモード
       // FILE_CSV: CSV形式
-      m_state_log_handle = FileOpen(state_log_path, FILE_WRITE | FILE_CSV | FILE_UNICODE, ',');  // ★Phase C-7.2b: UTF-8出力のため FILE_UNICODE に修正
+      // FILE_ANSI: 拡張子の「.」が削除される問題を回避するため FILE_ANSI に変更
+      m_state_log_handle = FileOpen(state_log_path, FILE_WRITE | FILE_CSV | FILE_ANSI, ',');  // ★Phase D-1: FILE_UNICODE → FILE_ANSI に修正
 
       if(m_state_log_handle == INVALID_HANDLE)
       {

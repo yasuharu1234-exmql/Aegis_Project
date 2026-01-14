@@ -82,6 +82,7 @@ enum ENUM_FUNCTION_ID
    FUNC_ID_TECHNICAL_RSI    = 205,
    FUNC_ID_TECHNICAL_STOCH  = 206,
    FUNC_ID_SIGNAL_INTEGRATOR = 210,
+   FUNC_ID_OBS_MARKET_SCAN   = 211,   // Phase D-1: Market Scan（研究用計測層）
 
    // ========== Layer 3: Decision (300-399) ==========
    FUNC_ID_ENVIRONMENT_JUDGE  = 300,
@@ -250,6 +251,7 @@ enum ENUM_LOG_ID
    LOG_ID_RSI_DECISION   = 110,  // RSI判断
    LOG_ID_SANDWICH_EVAL  = 111,  // Phase C-7.2a: 挟み撃ちトレイル評価
    LOG_ID_DECISION_SKIP  = 112,  // 判断スキップ（何もしなかった理由）
+   LOG_ID_MARKET_SCAN    = 113,  // Phase D-1: Market Scan（研究用計測層）
 
    // ========== 将来の拡張用 ==========
    LOG_ID_GATEKEEPER    = 1000,  // Gatekeeper層
